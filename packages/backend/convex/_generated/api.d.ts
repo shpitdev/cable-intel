@@ -8,7 +8,12 @@
  * @module
  */
 
-import type * as healthCheck from "../health-check.js";
+import type * as config from "../config.js";
+import type * as contracts_extraction from "../contracts/extraction.js";
+import type * as healthcheck from "../healthcheck.js";
+import type * as ingest from "../ingest.js";
+import type * as ingestDb from "../ingestDb.js";
+import type * as ingestQueries from "../ingestQueries.js";
 
 import type {
   ApiFromModules,
@@ -17,7 +22,12 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
-  healthCheck: typeof healthCheck;
+  config: typeof config;
+  "contracts/extraction": typeof contracts_extraction;
+  healthcheck: typeof healthcheck;
+  ingest: typeof ingest;
+  ingestDb: typeof ingestDb;
+  ingestQueries: typeof ingestQueries;
 }>;
 
 /**
