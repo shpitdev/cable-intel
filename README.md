@@ -1,59 +1,35 @@
 # cable-intel
 
-This project was created with [Better-T-Stack](https://github.com/AmanVarshney01/create-better-t-stack), a modern TypeScript stack that combines SvelteKit, Convex, and more.
+Monorepo for cable intelligence tooling.
 
-## Features
+## Stack
 
-- **TypeScript** - For type safety and improved developer experience
-- **SvelteKit** - Web framework for building Svelte apps
-- **TailwindCSS** - Utility-first CSS for rapid UI development
-- **shadcn/ui** - Reusable UI components
-- **Convex** - Reactive backend-as-a-service platform
-- **Turborepo** - Optimized monorepo build system
+- `apps/web`: SvelteKit frontend
+- `apps/tui`: terminal UI
+- `packages/backend`: Convex backend
+- `packages/env`: shared environment validation
 
-## Getting Started
-
-First, install the dependencies:
+## Setup
 
 ```bash
 bun install
-```
-
-## Convex Setup
-
-This project uses Convex as a backend. You'll need to set up Convex before running the app:
-
-```bash
 bun run dev:setup
 ```
 
-Follow the prompts to create a new Convex project and connect it to your application.
+`dev:setup` configures Convex (`packages/backend`).
 
-Copy environment variables from `packages/backend/.env.local` to `apps/*/.env`.
-
-Then, run the development server:
+## Run
 
 ```bash
 bun run dev
 ```
 
-Open [http://localhost:5173](http://localhost:5173) in your browser to see the web application.
-Your app will connect to the Convex cloud backend automatically.
+Web app: `http://localhost:5173`
 
-## Project Structure
+## Useful Scripts
 
-```
-cable-intel/
-├── apps/
-│   ├── web/         # Frontend application (SvelteKit)
-├── packages/
-│   ├── backend/     # Convex backend functions and schema
-```
-
-## Available Scripts
-
-- `bun run dev`: Start all applications in development mode
-- `bun run build`: Build all applications
-- `bun run dev:web`: Start only the web application
-- `bun run dev:setup`: Setup and configure your Convex project
-- `bun run check-types`: Check TypeScript types across all apps
+- `bun run dev`: run workspace dev tasks
+- `bun run build`: run workspace build tasks
+- `bun run check-types`: run type checks
+- `bun run check`: run Ultracite checks
+- `bun run fix`: apply Ultracite fixes

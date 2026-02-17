@@ -1,5 +1,5 @@
 {
-  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "editor.defaultFormatter": "biomejs.biome",
   "typescript.tsdk": "node_modules/typescript/lib",
   "editor.formatOnSave": true,
   "editor.formatOnPaste": true,
@@ -21,6 +21,12 @@
   },
   "[jsonc]": {
     "editor.defaultFormatter": "biomejs.biome"
+  },
+  "files.exclude": {
+    "**/*.lock": true
+  },
+  "files.associations": {
+    "*.lock": "plaintext"
   },
   "[html]": {
     "editor.defaultFormatter": "biomejs.biome"
@@ -49,5 +55,27 @@
   "editor.codeActionsOnSave": {
     "source.fixAll.biome": "explicit",
     "source.organizeImports.biome": "explicit"
-  }
+  },
+  "workbench.colorCustomizations": {
+    "activityBar.activeBackground": "#c53d9e",
+    "activityBar.background": "#c53d9e",
+    "activityBar.foreground": "#e7e7e7",
+    "activityBar.inactiveForeground": "#e7e7e799",
+    "activityBarBadge.background": "#3b4a16",
+    "activityBarBadge.foreground": "#e7e7e7",
+    "commandCenter.border": "#e7e7e799",
+    "editorGroup.border": "#c53d9e",
+    "sash.hoverBorder": "#c53d9e",
+    "statusBar.background": "#9f307f",
+    "statusBar.foreground": "#e7e7e7",
+    "statusBarItem.hoverBackground": "#c53d9e",
+    "statusBarItem.remoteBackground": "#9f307f",
+    "statusBarItem.remoteForeground": "#e7e7e7",
+    "tab.activeBorder": "#c53d9e",
+    "titleBar.activeBackground": "#9f307f",
+    "titleBar.activeForeground": "#e7e7e7",
+    "titleBar.inactiveBackground": "#9f307f99",
+    "titleBar.inactiveForeground": "#e7e7e799"
+  },
+  "peacock.color": "#9f307f"
 }
