@@ -9,6 +9,8 @@
     "dev:setup": "convex dev --configure --until-success"
   },
   "dependencies": {
+    "@cable-intel/shopify-cable-source": "workspace:*",
+    "ai": "^6.0.87",
     "convex": "catalog:",
     "dotenv": "catalog:",
     "zod": "catalog:"
