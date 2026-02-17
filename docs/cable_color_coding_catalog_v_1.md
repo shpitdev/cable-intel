@@ -43,7 +43,7 @@ Rule: if label only says `PD` or `fast charge` without wattage, use `Black` adap
 | Thick USB-C -> USB-C with no wattage label | `Black velcro + Orange adapter` |
 | USB-C -> Lightning | `Black velcro + Green adapter` |
 
-## Catalog (Current Items)
+## Catalog (Current Items) EXAMPLE ONLY GET REAL LINKS FROM FIRECRAWL
 
 | # | Product | Link | Data class | Power class | Tags |
 |---:|---|---|---|---|---|

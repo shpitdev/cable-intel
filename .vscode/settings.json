@@ -23,7 +23,12 @@
     "editor.defaultFormatter": "biomejs.biome"
   },
   "files.exclude": {
-    "**/*.lock": true
+    "**/*.lock": true,
+    "**/.next": true,
+    "**/.turbo": true,
+    "**/build": true,
+    "**/coverage": true,
+    "**/dist": true
   },
   "files.associations": {
     "*.lock": "plaintext"
