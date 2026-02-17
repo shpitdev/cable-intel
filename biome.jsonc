@@ -11,6 +11,16 @@
           }
         }
       }
+    },
+    {
+      "includes": ["packages/backend/convex/**/*.ts"],
+      "linter": {
+        "rules": {
+          "style": {
+            "useFilenamingConvention": "off"
+          }
+        }
+      }
     }
   ]
 }

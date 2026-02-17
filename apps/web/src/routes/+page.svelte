@@ -2,7 +2,7 @@
   import { api } from "@cable-intel/backend/convex/_generated/api";
   import { useQuery } from "convex-svelte";
 
-  const healthCheck = useQuery(api.healthCheck.get, {});
+  const healthCheck = useQuery(api.healthcheck.get, {});
 
   const TITLE_TEXT = `
    ██████╗ ███████╗████████╗████████╗███████╗██████╗

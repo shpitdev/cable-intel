@@ -1,12 +1,19 @@
 "use node";
 
 import { createHash } from "node:crypto";
+import {
+  createShopifyCableSource,
+  getShopifyCableTemplateById,
+  listShopifyCableTemplates,
+  matchShopifyTemplateForUrl,
+  type ShopifyExtractedCableSpec,
+} from "@cable-intel/shopify-cable-source";
 import { gateway, generateObject } from "ai";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
-import { action } from "./_generated/server";
-import { getIngestConfig } from "./config";
+import { type ActionCtx, action } from "./_generated/server";
+import { getIngestConfig, ingestDefaults } from "./config";
 import {
   extractionOutputSchema,
   parseExtractionOutput,
@@ -31,6 +38,25 @@ interface RunSeedIngestResult {
   totalItems: number;
   workflowRunId: Id<"ingestionWorkflows">;
 }
+
+interface ExtractedCablesForUrl {
+  parsedCables: ParsedCable[];
+  snapshot: ScrapedSnapshot;
+}
+
+type ParsedCable = ReturnType<typeof parseExtractionOutput>;
+type ProviderConfig = ReturnType<typeof getIngestConfig>;
+type RetryConfig = Pick<
+  typeof ingestDefaults,
+  "initialRetryDelayMs" | "maxParseRetries" | "maxRetryDelayMs"
+>;
+
+const shopifyTemplates = listShopifyCableTemplates();
+const shopifySourcesByTemplateId = new Map(
+  shopifyTemplates.map((template) => {
+    return [template.id, createShopifyCableSource(template)] as const;
+  })
+);
 
 const canonicalizeUrl = (value: string): string => {
   const parsed = new URL(value);
@@ -192,20 +218,107 @@ const buildExtractionPrompt = (
   return promptLines.join("\n");
 };
 
+const normalizeImageUrl = (value: string): string | null => {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+  try {
+    return new URL(trimmed).toString();
+  } catch {
+    return null;
+  }
+};
+
 const dedupeImageUrls = (urls: readonly string[]): string[] => {
   const candidates: string[] = [];
   for (const url of urls) {
-    const value = url.trim();
-    if (!value) {
-      continue;
-    }
-    try {
-      candidates.push(new URL(value).toString());
-    } catch {
-      // Ignore non-URL values from model output.
+    const normalizedUrl = normalizeImageUrl(url);
+    if (normalizedUrl) {
+      candidates.push(normalizedUrl);
     }
   }
   return [...new Set(candidates)];
+};
+
+const withMergedImages = (
+  parsed: ParsedCable,
+  ogImage: string | undefined
+): ParsedCable => {
+  const altByUrl = new Map<string, string>();
+  for (const image of parsed.images) {
+    const normalizedUrl = normalizeImageUrl(image.url);
+    if (!(normalizedUrl && image.alt)) {
+      continue;
+    }
+    if (!altByUrl.has(normalizedUrl)) {
+      altByUrl.set(normalizedUrl, image.alt);
+    }
+  }
+
+  const mergedImageUrls = dedupeImageUrls([
+    ...parsed.images.map((image) => image.url),
+    ...(ogImage ? [ogImage] : []),
+  ]);
+
+  return {
+    ...parsed,
+    images: mergedImageUrls.map((url) => {
+      const alt = altByUrl.get(url);
+      return alt ? { url, alt } : { url };
+    }),
+  };
+};
+
+const parseShopifyExtractedCable = (
+  cable: ShopifyExtractedCableSpec
+): ParsedCable => {
+  return parseExtractionOutput({
+    ...cable,
+    images: cable.images.map((image) => {
+      if (image.alt) {
+        return { url: image.url, alt: image.alt };
+      }
+      return { url: image.url };
+    }),
+  });
+};
+
+const extractCablesFromShopifySource = async (
+  url: string
+): Promise<ExtractedCablesForUrl | null> => {
+  const template = matchShopifyTemplateForUrl(url);
+  if (!template) {
+    return null;
+  }
+
+  const source = shopifySourcesByTemplateId.get(template.id);
+  if (!source) {
+    return null;
+  }
+
+  const extraction = await source.extractFromProductUrl(url);
+  if (!extraction || extraction.cables.length === 0) {
+    return null;
+  }
+
+  const ogImage = extraction.cables[0]?.images[0]?.url;
+  const parsedCables = extraction.cables.map((cable) => {
+    const parsed = parseShopifyExtractedCable(cable);
+    return withMergedImages(parsed, ogImage);
+  });
+
+  return {
+    snapshot: {
+      url: extraction.source.url,
+      canonicalUrl: extraction.source.canonicalUrl,
+      markdown: extraction.source.markdown,
+      html: extraction.source.html,
+      fetchedAt: extraction.source.fetchedAt,
+      ogImage,
+    },
+    parsedCables,
+  };
 };
 
 const extractCableFromSnapshot = async (
@@ -223,16 +336,173 @@ const extractCableFromSnapshot = async (
   });
 
   const parsed = parseExtractionOutput(object);
-  const mergedImageUrls = dedupeImageUrls([
-    ...parsed.images.map((image) => image.url),
-    ...(snapshot.ogImage ? [snapshot.ogImage] : []),
-  ]);
+  return withMergedImages(parsed, snapshot.ogImage);
+};
+
+const persistParsedCables = async (
+  ctx: ActionCtx,
+  workflowRunId: Id<"ingestionWorkflows">,
+  snapshot: ScrapedSnapshot,
+  parsedCables: readonly ParsedCable[],
+  createdAt: number
+): Promise<{
+  evidenceSourceId: Id<"evidenceSources">;
+  normalizedSpecId: Id<"normalizedSpecs">;
+}> => {
+  const contentHash = createHash("sha256")
+    .update(`${snapshot.canonicalUrl}\n${snapshot.markdown}\n${snapshot.html}`)
+    .digest("hex");
+
+  const evidenceSourceId = await ctx.runMutation(
+    internal.ingestDb.insertEvidenceSource,
+    {
+      workflowRunId,
+      url: snapshot.url,
+      canonicalUrl: snapshot.canonicalUrl,
+      fetchedAt: snapshot.fetchedAt,
+      contentHash,
+      html: snapshot.html,
+      markdown: snapshot.markdown,
+      createdAt,
+    }
+  );
+
+  let firstNormalizedSpecId: Id<"normalizedSpecs"> | undefined;
+  for (const parsed of parsedCables) {
+    const { normalizedSpecId } = await ctx.runMutation(
+      internal.ingestDb.upsertVariantAndInsertSpec,
+      {
+        workflowRunId,
+        sourceUrl: snapshot.url,
+        evidenceSourceId,
+        parsed,
+        now: createdAt,
+      }
+    );
+    firstNormalizedSpecId = firstNormalizedSpecId ?? normalizedSpecId;
+  }
+
+  if (!firstNormalizedSpecId) {
+    throw new Error(`No parsed cable output for URL: ${snapshot.url}`);
+  }
 
   return {
-    ...parsed,
-    images: mergedImageUrls.map((url) => ({ url })),
+    evidenceSourceId,
+    normalizedSpecId: firstNormalizedSpecId,
   };
 };
+
+const processWorkflowItem = async (
+  ctx: ActionCtx,
+  workflowRunId: Id<"ingestionWorkflows">,
+  itemId: Id<"ingestionWorkflowItems">,
+  url: string,
+  retryConfig: RetryConfig,
+  getProviderConfig: () => ProviderConfig
+): Promise<{
+  completed: boolean;
+  lastError?: string;
+}> => {
+  let lastItemError = "";
+
+  for (let attempt = 1; attempt <= retryConfig.maxParseRetries; attempt += 1) {
+    const now = Date.now();
+    await ctx.runMutation(internal.ingestDb.updateWorkflowItemStatus, {
+      itemId,
+      status: "in_progress",
+      now,
+      incrementAttemptCount: true,
+    });
+
+    try {
+      const shopifyExtraction = await extractCablesFromShopifySource(url);
+      let snapshot = shopifyExtraction?.snapshot;
+      if (!snapshot) {
+        const providerConfig = getProviderConfig();
+        snapshot = await scrapeUrl(url, providerConfig.firecrawlApiKey);
+      }
+
+      let parsedCables = shopifyExtraction?.parsedCables;
+      if (!parsedCables) {
+        const providerConfig = getProviderConfig();
+        const contentHash = createHash("sha256")
+          .update(
+            `${snapshot.canonicalUrl}\n${snapshot.markdown}\n${snapshot.html}`
+          )
+          .digest("hex");
+        const parsed = await extractCableFromSnapshot(
+          providerConfig.model,
+          snapshot,
+          contentHash
+        );
+        parsedCables = [parsed];
+      }
+
+      const { evidenceSourceId, normalizedSpecId } = await persistParsedCables(
+        ctx,
+        workflowRunId,
+        snapshot,
+        parsedCables,
+        now
+      );
+
+      await ctx.runMutation(internal.ingestDb.updateWorkflowItemStatus, {
+        itemId,
+        status: "completed",
+        now: Date.now(),
+        evidenceSourceId,
+        normalizedSpecId,
+      });
+      return { completed: true };
+    } catch (error) {
+      lastItemError = getErrorMessage(error);
+      const isLastAttempt = attempt === retryConfig.maxParseRetries;
+      if (!isLastAttempt) {
+        const retryDelayMs = Math.min(
+          retryConfig.initialRetryDelayMs * 2 ** (attempt - 1),
+          retryConfig.maxRetryDelayMs
+        );
+        await delay(retryDelayMs);
+      }
+    }
+  }
+
+  return {
+    completed: false,
+    lastError: lastItemError,
+  };
+};
+
+export const listShopifyTemplates = action({
+  args: {},
+  handler: () => {
+    return shopifyTemplates.map((template) => ({
+      id: template.id,
+      name: template.name,
+      baseUrl: template.baseUrl,
+    }));
+  },
+});
+
+export const discoverShopifySeedUrls = action({
+  args: {
+    templateId: v.string(),
+    maxItems: v.optional(v.number()),
+  },
+  handler: async (_ctx, args): Promise<string[]> => {
+    const template = getShopifyCableTemplateById(args.templateId);
+    if (!template) {
+      throw new Error(`Unknown Shopify cable template: ${args.templateId}`);
+    }
+
+    const source = shopifySourcesByTemplateId.get(template.id);
+    if (!source) {
+      throw new Error(`Shopify source not initialized: ${args.templateId}`);
+    }
+
+    return await source.discoverProductUrls(args.maxItems);
+  },
+});
 
 export const runSeedIngest = action({
   args: {
@@ -241,7 +511,15 @@ export const runSeedIngest = action({
     maxItems: v.optional(v.number()),
   },
   handler: async (ctx, args): Promise<RunSeedIngestResult> => {
-    const config = getIngestConfig();
+    const retryConfig = ingestDefaults;
+    let providerConfig: ProviderConfig | null = null;
+    const getProviderConfig = (): ProviderConfig => {
+      if (providerConfig) {
+        return providerConfig;
+      }
+      providerConfig = getIngestConfig();
+      return providerConfig;
+    };
     const allowedDomains = args.allowedDomains ?? [];
     const normalizedUrls = normalizeSeedUrls(
       args.seedUrls,
@@ -274,86 +552,22 @@ export const runSeedIngest = action({
       if (!itemId) {
         throw new Error(`Missing workflow item for URL index ${index}`);
       }
-      let itemCompleted = false;
-      let lastItemError = "";
+      const itemResult = await processWorkflowItem(
+        ctx,
+        workflowRunId,
+        itemId,
+        url,
+        retryConfig,
+        getProviderConfig
+      );
 
-      for (let attempt = 1; attempt <= config.maxParseRetries; attempt += 1) {
-        const now = Date.now();
-        await ctx.runMutation(internal.ingestDb.updateWorkflowItemStatus, {
-          itemId,
-          status: "in_progress",
-          now,
-          incrementAttemptCount: true,
-        });
-
-        try {
-          const snapshot = await scrapeUrl(url, config.firecrawlApiKey);
-          const contentHash = createHash("sha256")
-            .update(
-              `${snapshot.canonicalUrl}\n${snapshot.markdown}\n${snapshot.html}`
-            )
-            .digest("hex");
-
-          const evidenceSourceId = await ctx.runMutation(
-            internal.ingestDb.insertEvidenceSource,
-            {
-              workflowRunId,
-              url: snapshot.url,
-              canonicalUrl: snapshot.canonicalUrl,
-              fetchedAt: snapshot.fetchedAt,
-              contentHash,
-              html: snapshot.html,
-              markdown: snapshot.markdown,
-              createdAt: now,
-            }
-          );
-
-          const parsed = await extractCableFromSnapshot(
-            config.model,
-            snapshot,
-            contentHash
-          );
-
-          const { normalizedSpecId } = await ctx.runMutation(
-            internal.ingestDb.upsertVariantAndInsertSpec,
-            {
-              workflowRunId,
-              sourceUrl: snapshot.url,
-              evidenceSourceId,
-              parsed,
-              now,
-            }
-          );
-
-          await ctx.runMutation(internal.ingestDb.updateWorkflowItemStatus, {
-            itemId,
-            status: "completed",
-            now: Date.now(),
-            evidenceSourceId,
-            normalizedSpecId,
-          });
-          itemCompleted = true;
-          break;
-        } catch (error) {
-          lastItemError = getErrorMessage(error);
-          const isLastAttempt = attempt === config.maxParseRetries;
-          if (!isLastAttempt) {
-            const retryDelayMs = Math.min(
-              config.initialRetryDelayMs * 2 ** (attempt - 1),
-              config.maxRetryDelayMs
-            );
-            await delay(retryDelayMs);
-          }
-        }
-      }
-
-      if (!itemCompleted) {
-        workflowLastError = workflowLastError ?? lastItemError;
+      if (!itemResult.completed) {
+        workflowLastError = workflowLastError ?? itemResult.lastError;
         await ctx.runMutation(internal.ingestDb.updateWorkflowItemStatus, {
           itemId,
           status: "failed",
           now: Date.now(),
-          lastError: lastItemError,
+          lastError: itemResult.lastError,
         });
       }
     }
