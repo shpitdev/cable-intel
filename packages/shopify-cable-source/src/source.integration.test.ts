@@ -2,7 +2,10 @@ import { describe, expect, it } from "bun:test";
 import { createShopifyCableSource } from "./source";
 import { shopifyCableTemplates } from "./templates";
 
-const ankerTemplate = shopifyCableTemplates[0];
+const ANKER_TEMPLATE_ID = "anker-us";
+const ankerTemplate = shopifyCableTemplates.find((template) => {
+  return template.id === ANKER_TEMPLATE_ID;
+});
 
 if (!ankerTemplate) {
   throw new Error("Missing Anker Shopify template");

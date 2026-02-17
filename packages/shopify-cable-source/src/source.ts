@@ -152,6 +152,10 @@ const escapeHtml = (value: string): string => {
     .replaceAll("'", "&#39;");
 };
 
+const toSafeHtmlParagraph = (value: string): string => {
+  return `<p>${escapeHtml(value)}</p>`;
+};
+
 const dedupeUrls = (urls: readonly string[]): string[] => {
   const seen = new Set<string>();
   const deduped: string[] = [];
@@ -680,9 +684,10 @@ const buildExtractionResultFromProduct = (
   product: ShopifyProduct
 ): ShopifyExtractionResult => {
   const context = buildProductExtractionContext(template, productPath, product);
-  const html = cleanText(product.descriptionHtml)
-    ? (product.descriptionHtml ?? `<p>${escapeHtml(context.markdown)}</p>`)
-    : `<p>${escapeHtml(context.markdown)}</p>`;
+  const descriptionText = cleanText(product.descriptionHtml);
+  const html = descriptionText
+    ? toSafeHtmlParagraph(descriptionText)
+    : toSafeHtmlParagraph(context.markdown);
 
   return {
     cables: buildCableSpecs(context),
@@ -742,24 +747,40 @@ export const createShopifyCableSource = (
     pathname: string,
     searchParams?: URLSearchParams
   ): Promise<NextDataDocument> => {
-    const buildId = await getBuildId();
-    const nextDataUrl = new URL(
-      `/_next/data/${buildId}${toNextDataJsonPath(pathname)}`,
-      template.baseUrl
-    );
-    if (searchParams) {
-      nextDataUrl.search = searchParams.toString();
-    }
-
-    const response = await fetch(nextDataUrl.toString());
-    if (!response.ok) {
-      throw new HttpError(
-        `Failed to fetch Next data (${response.status}) for ${pathname}`,
-        response.status
+    const fetchWithBuildId = async (
+      buildId: string
+    ): Promise<NextDataDocument> => {
+      const nextDataUrl = new URL(
+        `/_next/data/${buildId}${toNextDataJsonPath(pathname)}`,
+        template.baseUrl
       );
-    }
+      if (searchParams) {
+        nextDataUrl.search = searchParams.toString();
+      }
 
-    return (await response.json()) as NextDataDocument;
+      const response = await fetch(nextDataUrl.toString());
+      if (!response.ok) {
+        throw new HttpError(
+          `Failed to fetch Next data (${response.status}) for ${pathname}`,
+          response.status
+        );
+      }
+
+      return (await response.json()) as NextDataDocument;
+    };
+
+    const buildId = await getBuildId();
+    try {
+      return await fetchWithBuildId(buildId);
+    } catch (error) {
+      if (!(error instanceof HttpError) || error.status !== 404) {
+        throw error;
+      }
+
+      cachedBuildId = undefined;
+      const refreshedBuildId = await getBuildId();
+      return await fetchWithBuildId(refreshedBuildId);
+    }
   };
 
   const discoverProductUrls = async (maxItems = 200): Promise<string[]> => {

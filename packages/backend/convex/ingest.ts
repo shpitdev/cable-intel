@@ -218,17 +218,24 @@ const buildExtractionPrompt = (
   return promptLines.join("\n");
 };
 
+const normalizeImageUrl = (value: string): string | null => {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+  try {
+    return new URL(trimmed).toString();
+  } catch {
+    return null;
+  }
+};
+
 const dedupeImageUrls = (urls: readonly string[]): string[] => {
   const candidates: string[] = [];
   for (const url of urls) {
-    const value = url.trim();
-    if (!value) {
-      continue;
-    }
-    try {
-      candidates.push(new URL(value).toString());
-    } catch {
-      // Ignore non-URL values from model output.
+    const normalizedUrl = normalizeImageUrl(url);
+    if (normalizedUrl) {
+      candidates.push(normalizedUrl);
     }
   }
   return [...new Set(candidates)];
@@ -238,6 +245,17 @@ const withMergedImages = (
   parsed: ParsedCable,
   ogImage: string | undefined
 ): ParsedCable => {
+  const altByUrl = new Map<string, string>();
+  for (const image of parsed.images) {
+    const normalizedUrl = normalizeImageUrl(image.url);
+    if (!(normalizedUrl && image.alt)) {
+      continue;
+    }
+    if (!altByUrl.has(normalizedUrl)) {
+      altByUrl.set(normalizedUrl, image.alt);
+    }
+  }
+
   const mergedImageUrls = dedupeImageUrls([
     ...parsed.images.map((image) => image.url),
     ...(ogImage ? [ogImage] : []),
@@ -245,7 +263,10 @@ const withMergedImages = (
 
   return {
     ...parsed,
-    images: mergedImageUrls.map((url) => ({ url })),
+    images: mergedImageUrls.map((url) => {
+      const alt = altByUrl.get(url);
+      return alt ? { url, alt } : { url };
+    }),
   };
 };
 

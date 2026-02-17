@@ -6,6 +6,7 @@ import { api } from "./_generated/api";
 import schema from "./schema";
 
 const MODULE_FILE_REGEX = /\.[cm]?[jt]sx?$/;
+const DECLARATION_FILE_SUFFIX = ".d.ts";
 
 const modules = (() => {
   const loaders: Record<string, () => Promise<unknown>> = {};
@@ -22,7 +23,10 @@ const modules = (() => {
             `${prefix}${entry.name}/`
           )
         );
-      } else if (entry.name.match(MODULE_FILE_REGEX)) {
+      } else if (
+        entry.name.match(MODULE_FILE_REGEX) &&
+        !entry.name.endsWith(DECLARATION_FILE_SUFFIX)
+      ) {
         modulePaths.push(`${prefix}${entry.name}`);
       }
     }
