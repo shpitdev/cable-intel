@@ -24,16 +24,18 @@
   }
 
   interface CapabilityScale {
-    details: string[];
+    details: readonly string[];
     heading: string;
     icon: "data" | "power" | "video";
     level: number;
-    palette: string[];
-    steps: string[];
+    palette: readonly string[];
+    steps: readonly string[];
     title: string;
   }
 
   const HEX_COLOR_REGEX = /^[\da-fA-F]{6}$/;
+  const POWER_BLACK_LUMA_SHIFT = 8;
+  const DATA_BLUE_LUMA_SHIFT = -14;
 
   const SCALE_MAX_LEVEL = 4;
   const POWER_STEPS = [
@@ -42,21 +44,21 @@
     "Modern phone",
     "Small laptop",
     "Powerhouse laptop",
-  ];
+  ] as const;
   const DATA_STEPS = [
     "Unknown",
     "USB2 sync",
     "Fast files",
     "High-speed",
     "USB4/TB class",
-  ];
+  ] as const;
   const VIDEO_STEPS = [
     "Unknown",
     "No display",
     "Basic display",
     "4K class",
     "High refresh",
-  ];
+  ] as const;
 
   let { recommendation, profile }: Props = $props();
 
@@ -67,9 +69,9 @@
   };
 
   const parseHex = (
-    value: string
+    value?: string
   ): { blue: number; green: number; red: number } => {
-    const normalized = value.trim().replace("#", "");
+    const normalized = (value?.trim() ?? "").replace("#", "");
     const hex =
       normalized.length === 3
         ? normalized
@@ -123,7 +125,7 @@
   const getPowerPalette = (): string[] => {
     return [
       "#c3bbb0",
-      shiftHex(getHolderHex("Black"), 8),
+      shiftHex(getHolderHex("Black"), POWER_BLACK_LUMA_SHIFT),
       getHolderHex("Green"),
       getHolderHex("Orange"),
       getHolderHex("Red"),
@@ -134,13 +136,19 @@
     return [
       "#c3bbb0",
       getVelcroHex("Black"),
-      shiftHex(getVelcroHex("Blue"), -14),
+      shiftHex(getVelcroHex("Blue"), DATA_BLUE_LUMA_SHIFT),
       getVelcroHex("Blue"),
       getVelcroHex("Orange"),
     ];
   };
 
-  const VIDEO_PALETTE = ["#c3bbb0", "#5d646a", "#3d7984", "#1d7f8a", "#0b7f72"];
+  const VIDEO_PALETTE = [
+    "#c3bbb0",
+    "#5d646a",
+    "#3d7984",
+    "#1d7f8a",
+    "#0b7f72",
+  ] as const;
 
   const getPowerScale = (profileValue: CableProfile): CapabilityScale => {
     const watts = profileValue.power.maxWatts;

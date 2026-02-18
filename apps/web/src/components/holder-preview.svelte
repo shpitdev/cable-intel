@@ -9,6 +9,11 @@
   }
 
   const HEX_COLOR_REGEX = /^[\da-fA-F]{6}$/;
+  const VELCRO_LUMA_SHIFT = -20;
+  const HOLDER_LUMA_SHIFT = -24;
+  const OUTLINE_LUMA_SHIFT = -14;
+  const OUTLINE_RED_DIFF_THRESHOLD = 30;
+  const OUTLINE_FALLBACK_HEX = "#b5afa6";
 
   let { adapterHex, velcroHex }: Props = $props();
 
@@ -17,9 +22,9 @@
   };
 
   const parseHex = (
-    value: string
+    value?: string
   ): { blue: number; green: number; red: number } => {
-    const normalized = value.trim().replace("#", "");
+    const normalized = (value?.trim() ?? "").replace("#", "");
     const hex =
       normalized.length === 3
         ? normalized
@@ -48,14 +53,15 @@
     return toHex(rgb.red + delta, rgb.green + delta, rgb.blue + delta);
   };
 
-  const velcroOuter = $derived(shiftLuma(velcroHex, -20));
-  const holderDetail = $derived(shiftLuma(adapterHex, -24));
+  const velcroOuter = $derived(shiftLuma(velcroHex, VELCRO_LUMA_SHIFT));
+  const holderDetail = $derived(shiftLuma(adapterHex, HOLDER_LUMA_SHIFT));
   const shellOutline = $derived(
     shiftLuma(
-      Math.abs(parseHex(adapterHex).red - parseHex(velcroHex).red) < 30
+      Math.abs(parseHex(adapterHex).red - parseHex(velcroHex).red) <
+        OUTLINE_RED_DIFF_THRESHOLD
         ? adapterHex
-        : "#b5afa6",
-      -14
+        : OUTLINE_FALLBACK_HEX,
+      OUTLINE_LUMA_SHIFT
     )
   );
 </script>

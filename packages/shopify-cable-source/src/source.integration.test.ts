@@ -3,6 +3,8 @@ import { createShopifyCableSource } from "./source";
 import { shopifyCableTemplates } from "./templates";
 
 const ANKER_TEMPLATE_ID = "anker-us";
+const LIGHTNING_MAX_GBPS = 0.48 as const;
+const LIGHTNING_USB_GENERATION_FRAGMENT = "USB 2.0" as const;
 const ankerTemplate = shopifyCableTemplates.find((template) => {
   return template.id === ANKER_TEMPLATE_ID;
 });
@@ -92,8 +94,10 @@ describe("shopify cable source integration", () => {
         cable.connectorPair.from === "Lightning" ||
           cable.connectorPair.to === "Lightning"
       ).toBe(true);
-      expect(cable.data.maxGbps).toBeLessThanOrEqual(0.48);
-      expect(cable.data.usbGeneration).toContain("USB 2.0");
+      expect(cable.data.maxGbps).toBeLessThanOrEqual(LIGHTNING_MAX_GBPS);
+      expect(cable.data.usbGeneration).toContain(
+        LIGHTNING_USB_GENERATION_FRAGMENT
+      );
     }
   }, 120_000);
 });

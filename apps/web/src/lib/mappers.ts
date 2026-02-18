@@ -162,10 +162,7 @@ export const buildProfileFromMarkings = (
   const normalizedData = clampDataCapabilityByConnector(
     {
       usbGeneration: draft.usbGeneration.trim() || undefined,
-      maxGbps:
-        parsedGbps ??
-        inferMaxGbpsFromGeneration(draft.usbGeneration) ??
-        undefined,
+      maxGbps: parsedGbps ?? inferMaxGbpsFromGeneration(draft.usbGeneration),
     },
     connectorFrom,
     connectorTo

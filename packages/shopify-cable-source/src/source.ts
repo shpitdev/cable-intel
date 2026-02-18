@@ -127,6 +127,8 @@ const VIDEO_POSITIVE_REGEX =
   /screen\s+mirroring|display\s+support|video\s+output|supports\s+video/i;
 const RESOLUTION_REGEX = /(8K|5K|4K|2K|1080p)/i;
 const REFRESH_RATE_REGEX = /(\d{2,3})\s*Hz\b/i;
+const LIGHTNING_MAX_GBPS = 0.48 as const;
+const LIGHTNING_USB_GENERATION = "USB 2.0 (Lightning ceiling)" as const;
 
 const stripTags = (value: string): string => {
   return value.replace(/<[^>]+>/g, " ");
@@ -432,13 +434,16 @@ const getDataCapability = (
   if (speeds.length > 0) {
     maxGbps = Math.max(...speeds);
   } else if (isLightningCable) {
-    maxGbps = 0.48;
+    maxGbps = LIGHTNING_MAX_GBPS;
   }
 
   if (isLightningCable) {
     return {
-      maxGbps: typeof maxGbps === "number" ? Math.min(maxGbps, 0.48) : 0.48,
-      usbGeneration: "USB 2.0 (Lightning ceiling)",
+      maxGbps:
+        typeof maxGbps === "number"
+          ? Math.min(maxGbps, LIGHTNING_MAX_GBPS)
+          : LIGHTNING_MAX_GBPS,
+      usbGeneration: LIGHTNING_USB_GENERATION,
     };
   }
 
