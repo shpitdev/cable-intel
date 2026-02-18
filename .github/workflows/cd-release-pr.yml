@@ -1,0 +1,109 @@
+name: cd-release-pr
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: cd-release-pr-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  create-release-pr:
+    runs-on: ubuntu-latest
+    if: |
+      !contains(github.event.head_commit.message, '[skip-release]') &&
+      !contains(github.event.head_commit.message, 'chore: bump version')
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Configure git user
+        run: |
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+
+      - name: Skip if bump PR already exists
+        id: existing_bump_pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          COUNT=$(gh pr list \
+            --repo "$GITHUB_REPOSITORY" \
+            --state open \
+            --json number,headRefName \
+            --jq '[.[] | select(.headRefName | startswith("chore/bump-version-"))] | length')
+          if [ "$COUNT" -gt 0 ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Existing bump PR found; skipping."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Bump patch version
+        id: bump
+        if: steps.existing_bump_pr.outputs.skip != 'true'
+        run: |
+          node <<'NODE'
+          const fs = require("node:fs");
+
+          const packageJsonPath = "package.json";
+          const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
+          const version = String(packageJson.version ?? "");
+          const match = version.match(/^(\d+)\.(\d+)\.(\d+)$/);
+          if (!match) {
+            throw new Error(`package.json version must be x.y.z, received "${version}"`);
+          }
+
+          const major = Number.parseInt(match[1], 10);
+          const minor = Number.parseInt(match[2], 10);
+          const patch = Number.parseInt(match[3], 10);
+          const nextVersion = `${major}.${minor}.${patch + 1}`;
+
+          packageJson.version = nextVersion;
+          fs.writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `new_version=${nextVersion}\n`);
+          NODE
+
+      - name: Create bump branch and commit
+        id: bump_branch
+        if: steps.existing_bump_pr.outputs.skip != 'true'
+        run: |
+          BRANCH="chore/bump-version-${{ github.run_id }}-${{ github.run_attempt }}"
+          git checkout -b "$BRANCH"
+          git add package.json
+          git commit -m "chore: bump version to ${{ steps.bump.outputs.new_version }} [skip-release]"
+          git push --set-upstream origin "$BRANCH"
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+
+      - name: Create release PR
+        id: bump_pr
+        if: steps.existing_bump_pr.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_URL=$(gh pr create \
+            --repo "$GITHUB_REPOSITORY" \
+            --base main \
+            --head "${{ steps.bump_branch.outputs.branch }}" \
+            --title "chore: bump version to ${{ steps.bump.outputs.new_version }}" \
+            --body "Automated patch version bump for next release.")
+          echo "pr_url=$PR_URL" >> "$GITHUB_OUTPUT"
+
+      - name: Enable auto-merge on release PR
+        if: steps.existing_bump_pr.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr merge "${{ steps.bump_pr.outputs.pr_url }}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --squash \
+            --auto

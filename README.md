@@ -38,6 +38,13 @@ Web app: `http://localhost:5173`
 - `bun run --cwd apps/tui start`: interactive ingest manager TUI (discover/seed/report)
 - `bun run --cwd apps/tui build:bin`: compile standalone TUI binary (`apps/tui/dist/cable-intel-tui`)
 
+## Release Automation
+
+- Pushes to `main` automatically create a version-bump PR (`chore: bump version to x.y.z`).
+- Auto-merge is enabled on that PR, so only review approval/rejection is needed.
+- When the bump PR merges, GitHub Release `vX.Y.Z` is created automatically.
+- Tag creation triggers TUI bundle publishing via `.github/workflows/tui-release.yml`.
+
 ## Ingest Notes
 
 - Backend ingest is Shopify-first with Firecrawl + AI fallback.
