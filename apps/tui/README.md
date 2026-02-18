@@ -45,7 +45,6 @@ Tag pushes matching `tui-v*` or `v*` trigger `.github/workflows/tui-release.yml`
 That workflow builds standalone binaries for:
 
 - Linux x64
-- macOS x64
 - macOS arm64
 - Windows x64
 
