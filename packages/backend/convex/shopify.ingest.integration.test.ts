@@ -75,6 +75,16 @@ describe("shopify ingest integration", () => {
         expect(ingestResult.completedItems).toBe(EXPECT_COMPLETED_ITEMS);
         expect(ingestResult.failedItems).toBe(EXPECT_FAILED_ITEMS);
 
+        const report = await t.query(api.ingestQueries.getWorkflowReport, {
+          workflowRunId: ingestResult.workflowRunId,
+          limit: TOP_CABLE_LIMIT,
+        });
+
+        const workflowRows = report.cables.filter((row) => {
+          return row.productUrl?.includes(TARGET_PRODUCT_SLUG);
+        });
+        expect(workflowRows.length).toBeGreaterThan(MIN_ANKER_ROWS);
+
         const topCables = await t.query(api.ingestQueries.getTopCables, {
           limit: TOP_CABLE_LIMIT,
         });
