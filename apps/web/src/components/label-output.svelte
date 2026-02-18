@@ -1,17 +1,39 @@
 <script lang="ts">
-  import { inferMaxGbpsFromGeneration } from "$lib/capability";
+  import { inferMaxGbpsFromGeneration, resolutionRank } from "$lib/capability";
   import type { CableProfile, LabelRecommendation } from "$lib/types";
   import { LABEL_COLOR_HEX } from "$lib/types";
+  import HolderPreview from "./holder-preview.svelte";
 
   interface Props {
     profile: CableProfile | null;
     recommendation: LabelRecommendation | null;
   }
 
-  interface CapabilitySummary {
+  interface CapabilityScale {
+    details: string[];
     heading: string;
-    items: string[];
+    icon: "data" | "power" | "video";
+    level: number;
+    steps: string[];
+    title: string;
   }
+
+  const SCALE_MAX_LEVEL = 4;
+  const POWER_STEPS = ["Unknown", "Phone", "Tablet", "Laptop", "High power"];
+  const DATA_STEPS = [
+    "Unknown",
+    "Basic sync",
+    "Files",
+    "Media",
+    "Edit off drive",
+  ];
+  const VIDEO_STEPS = [
+    "Unknown",
+    "No display",
+    "Basic display",
+    "4K class",
+    "High refresh",
+  ];
 
   let { recommendation, profile }: Props = $props();
 
@@ -21,23 +43,31 @@
     return LABEL_COLOR_HEX[value as keyof typeof LABEL_COLOR_HEX] ?? "#374151";
   };
 
-  const getPowerSummary = (profileValue: CableProfile): CapabilitySummary => {
+  const getPowerScale = (profileValue: CableProfile): CapabilityScale => {
     const watts = profileValue.power.maxWatts;
 
     if (watts === 0) {
       return {
-        heading: "Data-only / non-charging",
-        items: [
-          "Use for data transfer, peripherals, or sync.",
-          "Not intended for device charging.",
+        title: "Power",
+        icon: "power",
+        level: 0,
+        heading: "Data-only / no charge",
+        steps: POWER_STEPS,
+        details: [
+          "Use this for data transfer only.",
+          "Do not rely on it for charging devices.",
         ],
       };
     }
 
     if (typeof watts !== "number") {
       return {
+        title: "Power",
+        icon: "power",
+        level: 0,
         heading: "Power rating not listed",
-        items: [
+        steps: POWER_STEPS,
+        details: [
           "Safe assumption: phones and accessories.",
           "Laptop charging support is unknown.",
         ],
@@ -46,154 +76,206 @@
 
     if (watts >= 240) {
       return {
-        heading: "240W / EPR class",
-        items: [
-          "Charges accessories, phones, tablets, and high-power laptops.",
-          "Suitable for 16-inch laptop charging workflows.",
+        title: "Power",
+        icon: "power",
+        level: 4,
+        heading: `${watts}W / EPR class`,
+        steps: POWER_STEPS,
+        details: [
+          "Can power high-wattage laptops.",
+          "Best choice for a single do-it-all charging cable.",
         ],
       };
     }
 
     if (watts >= 100) {
       return {
-        heading: `${watts}W high-power class`,
-        items: [
-          "Charges phones, tablets, and most laptops.",
-          "Good default desk cable for mixed devices.",
+        title: "Power",
+        icon: "power",
+        level: 3,
+        heading: `${watts}W laptop class`,
+        steps: POWER_STEPS,
+        details: [
+          "Good for most laptop charging workflows.",
+          "Less overhead than 240W/EPR cables.",
         ],
       };
     }
 
     if (watts >= 60) {
       return {
+        title: "Power",
+        icon: "power",
+        level: 2,
         heading: `${watts}W mid-power class`,
-        items: [
-          "Great for phones, tablets, and light laptop charging.",
-          "May be insufficient for sustained high-load laptop charging.",
+        steps: POWER_STEPS,
+        details: [
+          "Great for phones, tablets, and lighter laptops.",
+          "May not keep up with sustained heavy laptop load.",
         ],
       };
     }
 
     return {
+      title: "Power",
+      icon: "power",
+      level: 1,
       heading: `${watts}W low-power class`,
-      items: [
+      steps: POWER_STEPS,
+      details: [
         "Best for accessories and phones.",
-        "Not intended for demanding laptop charging.",
+        "Not ideal for demanding laptop charging.",
       ],
     };
   };
 
-  const getDataSummary = (profileValue: CableProfile): CapabilitySummary => {
+  const getDataScale = (profileValue: CableProfile): CapabilityScale => {
     const inferredGbps =
       profileValue.data.maxGbps ??
       inferMaxGbpsFromGeneration(profileValue.data.usbGeneration);
 
     if (typeof inferredGbps !== "number") {
       return {
+        title: "Data",
+        icon: "data",
+        level: 0,
         heading: "Data speed not listed",
-        items: [
-          "Assume basic transfer behavior until verified.",
-          "Avoid relying on this cable for heavy media workflows.",
+        steps: DATA_STEPS,
+        details: [
+          "Assume basic transfer until verified.",
+          "Avoid relying on this for heavy media workflows.",
         ],
       };
     }
 
     if (inferredGbps >= 40) {
       return {
-        heading: `${inferredGbps}Gbps (USB4 / TB class)`,
-        items: [
-          "Fast enough for direct editing from external SSDs.",
-          "Handles large video and project file movement comfortably.",
+        title: "Data",
+        icon: "data",
+        level: 4,
+        heading: `${inferredGbps}Gbps USB4/TB class`,
+        steps: DATA_STEPS,
+        details: [
+          "Fast enough for edit-off-SSD style workflows.",
+          "Handles large media/project transfers comfortably.",
         ],
       };
     }
 
     if (inferredGbps >= 10) {
       return {
+        title: "Data",
+        icon: "data",
+        level: 3,
         heading: `${inferredGbps}Gbps high-speed class`,
-        items: [
-          "Great for large photo/video transfer and backups.",
-          "Works for many media workflows; less headroom than USB4/TB.",
+        steps: DATA_STEPS,
+        details: [
+          "Great for large photos/video transfer.",
+          "Good performance for regular backup jobs.",
         ],
       };
     }
 
     if (inferredGbps >= 5) {
       return {
+        title: "Data",
+        icon: "data",
+        level: 2,
         heading: `${inferredGbps}Gbps standard class`,
-        items: [
-          "Good for everyday file transfer and backups.",
-          "Not ideal for edit-off-drive workflows.",
+        steps: DATA_STEPS,
+        details: [
+          "Solid for everyday file transfer.",
+          "Not ideal for edit-off-drive use.",
         ],
       };
     }
 
     return {
+      title: "Data",
+      icon: "data",
+      level: 1,
       heading: `${inferredGbps}Gbps basic class`,
-      items: [
-        "Fine for documents, photos, and light sync.",
-        "Expect slower transfer for large media sets.",
+      steps: DATA_STEPS,
+      details: [
+        "Fine for docs, photos, and light sync.",
+        "Expect slower movement for large media sets.",
       ],
     };
   };
 
-  const getVideoSummary = (profileValue: CableProfile): CapabilitySummary => {
+  const getVideoScale = (profileValue: CableProfile): CapabilityScale => {
     const { explicitlySupported, maxRefreshHz, maxResolution } =
       profileValue.video;
 
     if (explicitlySupported === false) {
       return {
+        title: "Video",
+        icon: "video",
+        level: 1,
         heading: "No listed video output",
-        items: [
+        steps: VIDEO_STEPS,
+        details: [
           "Treat this as charge/data focused.",
-          "Do not rely on this cable for external displays.",
+          "Do not rely on it for external displays.",
         ],
       };
     }
 
-    if (maxResolution && typeof maxRefreshHz === "number") {
+    const rank = resolutionRank(maxResolution);
+
+    if ((rank ?? 0) >= 5 || (maxRefreshHz ?? 0) >= 120) {
       return {
-        heading: `Up to ${maxResolution} @ ${maxRefreshHz}Hz`,
-        items: [
-          "Suitable for monitor/TV output within this ceiling.",
-          "Check device and dock limits for final display behavior.",
+        title: "Video",
+        icon: "video",
+        level: 4,
+        heading: "High-resolution/high-refresh class",
+        steps: VIDEO_STEPS,
+        details: [
+          "Strong headroom for demanding display setups.",
+          "Validate final output with your exact host + display path.",
         ],
       };
     }
 
-    if (maxResolution) {
+    if ((rank ?? 0) >= 4 || (maxRefreshHz ?? 0) >= 60) {
       return {
-        heading: `Up to ${maxResolution}`,
-        items: [
-          "Resolution ceiling is listed, refresh ceiling is not listed.",
-          "Confirm refresh rate on your exact display chain.",
+        title: "Video",
+        icon: "video",
+        level: 3,
+        heading: "4K / 60-class output",
+        steps: VIDEO_STEPS,
+        details: [
+          "Good for mainstream external monitor workflows.",
+          "Resolution/refresh limits can still vary by device chain.",
         ],
       };
     }
 
-    if (typeof maxRefreshHz === "number") {
+    if (
+      explicitlySupported === true ||
+      (rank ?? 0) >= 2 ||
+      (maxRefreshHz ?? 0) >= 30
+    ) {
       return {
-        heading: `Video listed up to ${maxRefreshHz}Hz`,
-        items: [
-          "Refresh target is known, resolution target is not listed.",
-          "Confirm final resolution on your display setup.",
-        ],
-      };
-    }
-
-    if (explicitlySupported === true) {
-      return {
-        heading: "Video supported (ceiling not listed)",
-        items: [
-          "External display should work.",
-          "Maximum resolution and refresh are not listed.",
+        title: "Video",
+        icon: "video",
+        level: 2,
+        heading: "Display-capable (basic ceiling)",
+        steps: VIDEO_STEPS,
+        details: [
+          "External display should work for typical use.",
+          "Upper ceiling is not clearly listed in source data.",
         ],
       };
     }
 
     return {
+      title: "Video",
+      icon: "video",
+      level: 0,
       heading: "Video capability not listed",
-      items: [
+      steps: VIDEO_STEPS,
+      details: [
         "No clear video guarantee from source data.",
         "Validate with one known-good display cable path.",
       ],
@@ -220,9 +302,10 @@
       Pick a cable and the color code will be generated automatically.
     </p>
   {:else}
-    {@const powerSummary = getPowerSummary(profile)}
-    {@const dataSummary = getDataSummary(profile)}
-    {@const videoSummary = getVideoSummary(profile)}
+    {@const powerScale = getPowerScale(profile)}
+    {@const dataScale = getDataScale(profile)}
+    {@const videoScale = getVideoScale(profile)}
+    {@const capabilityScales = [powerScale, dataScale, videoScale]}
 
     <div class="color-code-grid mt-3">
       <div class="color-code-tile">
@@ -252,99 +335,11 @@
       </div>
     </div>
 
-    <div class="holder-preview mt-4">
-      <svg
-        viewBox="0 0 420 250"
-        role="img"
-        aria-label="Printable holder and velcro loop preview"
-      >
-        <defs>
-          <linearGradient id="holderBody" x1="0" x2="1" y1="0" y2="1">
-            <stop
-              offset="0%"
-              stop-color={getColorHex(recommendation.adapterColor)}
-            ></stop>
-            <stop offset="100%" stop-color="#10182866"></stop>
-          </linearGradient>
-          <linearGradient id="holderFace" x1="0" x2="0" y1="0" y2="1">
-            <stop
-              offset="0%"
-              stop-color={getColorHex(recommendation.adapterColor)}
-            ></stop>
-            <stop offset="100%" stop-color="#0f172a52"></stop>
-          </linearGradient>
-          <linearGradient id="velcroLoop" x1="0" x2="1" y1="0" y2="1">
-            <stop
-              offset="0%"
-              stop-color={getColorHex(recommendation.velcroColor)}
-            ></stop>
-            <stop offset="100%" stop-color="#1118277a"></stop>
-          </linearGradient>
-          <pattern
-            id="velcroTexture"
-            width="8"
-            height="8"
-            patternUnits="userSpaceOnUse"
-          >
-            <circle cx="2" cy="2" r="1" fill="#ffffff2f"></circle>
-            <circle cx="6" cy="4" r="1" fill="#00000020"></circle>
-            <circle cx="3" cy="7" r="1" fill="#ffffff1c"></circle>
-          </pattern>
-          <filter id="softShadow" x="-20%" y="-20%" width="140%" height="160%">
-            <feDropShadow
-              dx="0"
-              dy="8"
-              stdDeviation="7"
-              flood-color="#0f172a2e"
-            ></feDropShadow>
-          </filter>
-        </defs>
-
-        <ellipse cx="210" cy="210" rx="168" ry="24" fill="#d8d2c8"></ellipse>
-
-        <g filter="url(#softShadow)">
-          <path
-            d="M113 168 L170 98 L274 98 L306 138 L306 174 L113 174 Z"
-            fill="url(#holderBody)"
-            stroke="#10182830"
-            stroke-width="2"
-          ></path>
-          <path
-            d="M113 168 L170 98 L170 174 L113 174 Z"
-            fill="url(#holderFace)"
-            opacity="0.92"
-          ></path>
-          <path d="M170 98 L274 98 L306 138 L202 138 Z" fill="#ffffff20"></path>
-          <rect
-            x="266"
-            y="136"
-            width="26"
-            height="23"
-            rx="4"
-            fill="#0f172a40"
-          ></rect>
-          <circle cx="219" cy="131" r="5.5" fill="#0f172a3c"></circle>
-        </g>
-
-        <g filter="url(#softShadow)">
-          <path
-            d="M176 60 C239 52 290 67 300 103 C297 120 283 126 231 124 C181 121 160 108 158 90 C160 73 165 64 176 60 Z"
-            fill="url(#velcroLoop)"
-            stroke="#10182858"
-            stroke-width="2"
-          ></path>
-          <path
-            d="M176 60 C239 52 290 67 300 103 C297 120 283 126 231 124 C181 121 160 108 158 90 C160 73 165 64 176 60 Z"
-            fill="url(#velcroTexture)"
-            opacity="0.42"
-          ></path>
-        </g>
-      </svg>
-
-      <p class="selector-note">
-        Holder: <strong>{recommendation.adapterColor}</strong> • Velcro loop:
-        <strong>{recommendation.velcroColor}</strong>
-      </p>
+    <div class="mt-4">
+      <HolderPreview
+        adapterColor={recommendation.adapterColor}
+        velcroColor={recommendation.velcroColor}
+      />
     </div>
 
     <p class="mt-3 text-sm text-[color:var(--ink-strong)]">
@@ -355,45 +350,93 @@
       >
     </p>
 
-    <div class="capability-grid mt-4">
-      <article class="capability-card">
-        <p class="field-label">Power</p>
-        <p class="capability-heading">{powerSummary.heading}</p>
-        <ul class="capability-points">
-          {#each powerSummary.items as item (item)}
-            <li>{item}</li>
-          {/each}
-        </ul>
-      </article>
+    <div class="capability-scale-stack mt-4">
+      {#each capabilityScales as scale (scale.title)}
+        <article class="capability-scale-row" title={scale.details.join(" • ")}>
+          <div class="capability-scale-head">
+            <span class="capability-icon" aria-hidden="true">
+              {#if scale.icon === "power"}
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M13 2 L6 13 H11 L9 22 L18 10 H13 Z"
+                    stroke-width="1.9"
+                  ></path>
+                </svg>
+              {:else if scale.icon === "data"}
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  aria-hidden="true"
+                >
+                  <path d="M5 12 H19" stroke-width="1.9"></path>
+                  <path d="M14 7 L19 12 L14 17" stroke-width="1.9"></path>
+                  <circle cx="8" cy="12" r="2.5" stroke-width="1.9"></circle>
+                </svg>
+              {:else}
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  aria-hidden="true"
+                >
+                  <rect
+                    x="3"
+                    y="6"
+                    width="18"
+                    height="12"
+                    rx="2"
+                    stroke-width="1.9"
+                  ></rect>
+                  <path d="M8 18 V20" stroke-width="1.9"></path>
+                  <path d="M16 18 V20" stroke-width="1.9"></path>
+                </svg>
+              {/if}
+            </span>
+            <div>
+              <p class="field-label">{scale.title}</p>
+              <p class="capability-scale-meta">{scale.heading}</p>
+            </div>
+          </div>
 
-      <article class="capability-card">
-        <p class="field-label">Data</p>
-        <p class="capability-heading">{dataSummary.heading}</p>
-        <ul class="capability-points">
-          {#each dataSummary.items as item (item)}
-            <li>{item}</li>
-          {/each}
-        </ul>
-      </article>
+          <div
+            class="capability-track"
+            style={`--level:${scale.level}; --max-level:${SCALE_MAX_LEVEL}`}
+          >
+            <span class="capability-track-fill"></span>
+            <div class="capability-step-row" role="list">
+              {#each scale.steps as step, index (`${scale.title}-${step}`)}
+                <span
+                  role="listitem"
+                  class={`capability-step ${index <= scale.level ? "is-reached" : ""} ${index === scale.level ? "is-active" : ""}`}
+                  title={step}
+                ></span>
+              {/each}
+            </div>
+          </div>
+        </article>
+      {/each}
 
-      <article class="capability-card">
-        <p class="field-label">Video</p>
-        <p class="capability-heading">{videoSummary.heading}</p>
-        <ul class="capability-points">
-          {#each videoSummary.items as item (item)}
-            <li>{item}</li>
-          {/each}
-        </ul>
-      </article>
+      <p class="capability-detail-hint">
+        Hover or focus a dot for level details.
+      </p>
     </div>
 
-    <ul
-      class="mt-3 list-disc space-y-1 pl-5 text-xs text-[color:var(--ink-muted)]"
-    >
-      {#each recommendation.reasons as reason (reason)}
-        <li>{reason}</li>
-      {/each}
-    </ul>
+    <details class="optional-block mt-3">
+      <summary class="optional-summary">Why this color code</summary>
+      <ul
+        class="list-disc space-y-1 pl-5 pb-3 pr-3 text-xs text-[color:var(--ink-muted)]"
+      >
+        {#each recommendation.reasons as reason (reason)}
+          <li>{reason}</li>
+        {/each}
+      </ul>
+    </details>
   {/if}
 </section>
 

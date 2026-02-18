@@ -484,18 +484,17 @@
   {#if $identifyModeStore === "catalog"}
     <div class="catalog-workspace">
       <aside class="facet-nav fade-in delay-2">
-        <div class="facet-rail-header">
-          <p class="facet-rail-title">Deterministic filters</p>
-          {#if activeFacetCount > 0}
+        {#if activeFacetCount > 0}
+          <div class="facet-rail-header">
             <button
               type="button"
               class="inline-action"
               onclick={clearAllFacets}
             >
-              Clear all
+              Clear filters
             </button>
-          {/if}
-        </div>
+          </div>
+        {/if}
 
         {#each FACET_DIMENSIONS as dimension (dimension)}
           <section class="facet-group">
