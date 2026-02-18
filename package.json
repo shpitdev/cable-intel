@@ -17,7 +17,7 @@
   "scripts": {
     "dev": "turbo dev",
     "build": "turbo build",
-    "build:vercel": "cd packages/backend && bun x convex deploy --cmd-url-env-var-name PUBLIC_CONVEX_URL --cmd \"cd ../.. && turbo run build\"",
+    "build:vercel": "bash ./scripts/vercel-build.sh",
     "check-types": "turbo check-types",
     "dev:native": "turbo -F native dev",
     "dev:web": "turbo -F web dev",
