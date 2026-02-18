@@ -34,6 +34,7 @@ Web app: `http://localhost:5173`
 - `bun run check-types`: run type checks
 - `bun run check`: run Ultracite checks
 - `bun run fix`: apply Ultracite fixes
+- `bun run seed:vercel-deployment -- --vercel-url <deployment-url>`: derive Convex preview/prod deployment from a Vercel URL, seed Anker ingest data, and print a quality summary
 
 ## Ingest Notes
 
