@@ -1,0 +1,62 @@
+name: ci
+
+on:
+  pull_request:
+    paths-ignore:
+      - "docs/**"
+      - "README.md"
+      - "AGENTS.md"
+      - ".codex/**"
+      - ".opencode/**"
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - "docs/**"
+      - "README.md"
+      - "AGENTS.md"
+      - ".codex/**"
+      - ".opencode/**"
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.8
+
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          bun install --frozen-lockfile || (
+            echo "bun install failed; clearing Bun cache and retrying" >&2
+            bun pm cache rm
+            bun install --frozen-lockfile
+          )
+
+      - name: Ultracite check
+        run: bun x ultracite check
+
+      - name: Convex Shopify ingest integration test
+        run: bun test packages/backend/convex/shopify.ingest.integration.test.ts
+
+      - name: Shopify source integration test
+        run: bun test packages/shopify-cable-source/src/source.integration.test.ts
+
+      - name: Build
+        run: bun run build
+
+      - name: Publish summary
+        if: always()
+        run: |
+          echo "## CI Run" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- ultracite check" >> "$GITHUB_STEP_SUMMARY"
+          echo "- shopify ingest integration test" >> "$GITHUB_STEP_SUMMARY"
+          echo "- shopify source integration test" >> "$GITHUB_STEP_SUMMARY"
+          echo "- workspace build" >> "$GITHUB_STEP_SUMMARY"
