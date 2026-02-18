@@ -1,137 +1,44 @@
 <script lang="ts">
-  import { HOLDER_PREVIEW } from "$lib/holder-preview";
-  import { LABEL_COLOR_HEX, type LabelColor } from "$lib/types";
+  import type { LabelColor } from "$lib/types";
 
   interface Props {
     adapterColor: LabelColor;
+    adapterHex: string;
     velcroColor: LabelColor;
+    velcroHex: string;
   }
 
-  let { adapterColor, velcroColor }: Props = $props();
-
-  const getColorHex = (value: LabelColor): string => {
-    return LABEL_COLOR_HEX[value] ?? "#374151";
-  };
+  let { adapterColor, adapterHex, velcroColor, velcroHex }: Props = $props();
 </script>
 
 <div class="holder-preview">
   <svg
-    viewBox={HOLDER_PREVIEW.viewBox}
+    viewBox="0 0 852 951"
     role="img"
     aria-label="Printable holder clip and velcro strap preview"
   >
-    <defs>
-      <linearGradient id="holderBodyTone" x1="0" x2="1" y1="0" y2="1">
-        <stop offset="0%" stop-color={getColorHex(adapterColor)}></stop>
-        <stop offset="100%" stop-color="#0f172a66"></stop>
-      </linearGradient>
-      <linearGradient id="holderFaceTone" x1="0" x2="0" y1="0" y2="1">
-        <stop offset="0%" stop-color={getColorHex(adapterColor)}></stop>
-        <stop offset="100%" stop-color="#0f172a4d"></stop>
-      </linearGradient>
-      <linearGradient id="strapTone" x1="0" x2="1" y1="0" y2="1">
-        <stop offset="0%" stop-color={getColorHex(velcroColor)}></stop>
-        <stop offset="100%" stop-color="#1118278c"></stop>
-      </linearGradient>
-      <pattern
-        id="strapTextureTone"
-        width="8"
-        height="8"
-        patternUnits="userSpaceOnUse"
-      >
-        <circle cx="2" cy="2" r="1" fill="#ffffff22"></circle>
-        <circle cx="6" cy="4" r="1" fill="#0000002b"></circle>
-        <circle cx="3" cy="7" r="1" fill="#ffffff20"></circle>
-      </pattern>
-      <filter id="previewShadow" x="-20%" y="-20%" width="150%" height="160%">
-        <feDropShadow
-          dx="0"
-          dy="7"
-          stdDeviation="6"
-          flood-color="#0f172a33"
-        ></feDropShadow>
-      </filter>
-    </defs>
-
-    <ellipse cx="160" cy="214" rx="120" ry="20" fill="#d8d2c8"></ellipse>
-    <ellipse cx="394" cy="214" rx="96" ry="16" fill="#d8d2c8"></ellipse>
-
-    <g filter="url(#previewShadow)">
-      <path
-        d={HOLDER_PREVIEW.holderBodyPath}
-        fill="url(#holderBodyTone)"
-        stroke="#11182730"
-        stroke-width="2"
-      ></path>
-      <path
-        d={HOLDER_PREVIEW.holderFacePath}
-        fill="url(#holderFaceTone)"
-        opacity="0.95"
-      ></path>
-      <path d={HOLDER_PREVIEW.holderTopPath} fill="#ffffff24"></path>
-      <circle cx="178" cy="152" r="6" fill="#0f172a3b"></circle>
-      <rect
-        x="230"
-        y="156"
-        width="28"
-        height="20"
-        rx="4"
-        fill="#0f172a42"
-      ></rect>
-      <rect
-        x="116"
-        y="176"
-        width="114"
-        height="12"
-        rx="5"
-        fill="#0f172a2b"
-      ></rect>
-    </g>
-
-    <g filter="url(#previewShadow)">
-      <path
-        d={HOLDER_PREVIEW.strapLoopPath}
-        fill="url(#strapTone)"
-        stroke="#11182758"
-        stroke-width="2"
-      ></path>
-      <path
-        d={HOLDER_PREVIEW.strapLoopPath}
-        fill="url(#strapTextureTone)"
-        opacity="0.45"
-      ></path>
-      <path
-        d={HOLDER_PREVIEW.strapTailPath}
-        fill="url(#strapTone)"
-        stroke="#11182740"
-        stroke-width="2"
-      ></path>
-    </g>
-
-    <text
-      x="158"
-      y="238"
-      text-anchor="middle"
-      font-size="13"
-      fill="#5b5144"
-      font-weight="600"
-    >
-      holder clip
-    </text>
-    <text
-      x="394"
-      y="238"
-      text-anchor="middle"
-      font-size="13"
-      fill="#5b5144"
-      font-weight="600"
-    >
-      velcro strap
-    </text>
+    <path
+      fill={velcroHex}
+      transform="matrix(1.14209 0 0 1.14303 -287.807 0)"
+      d="M435.272 485.032C428.036 467.999 418.636 431.457 417.761 413.915C415.283 364.231 422.545 305.416 438.631 258.662C457.948 202.517 498.533 150.088 552.652 124.66C603.331 100.849 670.093 96.7772 722.996 115.842C776.688 135.192 816.484 173.389 840.94 224.633C862.631 270.083 868.496 315.676 868 365.389C867.778 387.587 867.102 403.266 862.787 425.537C858.572 447.291 852.327 463.456 844.985 484.056C850.272 485.635 855.953 487.347 860.748 490.11C867.021 517.046 870.785 549.476 867.045 576.874C857.247 589.052 848.831 596.406 839.805 609.807C839.069 633.696 839.683 657.455 839.103 681.316C808.099 695.947 769.802 704.579 737.255 716.229C723.847 721.029 709.757 719.868 695.634 719.786L644.035 719.446C623.281 719.369 602.527 719.149 581.775 718.788C573.701 718.663 559.342 719.167 551.854 717.823C544.021 716.417 531.053 712.135 523.22 709.653C505.001 703.885 486.896 697.762 468.916 691.286C460.755 688.354 451.12 684.859 443.596 680.628C439.268 656.069 447.612 630.798 440.436 607.474C438.079 599.809 420.921 580.981 414.49 575.818C410.756 549.895 413.65 527.288 421.947 502.691C423.5 498.086 424.884 493.282 426.863 488.833C429.595 487.557 432.487 486.142 435.272 485.032ZM787.507 468.538C816.562 438.818 840.23 383.496 838.526 341.783C837.161 308.38 811.65 268.734 788.15 246.093C749.44 207.925 687.164 189.834 633.791 190.834C584.169 191.629 536.925 212.237 502.578 248.068C484.55 266.865 471.328 287.806 459.512 310.915C452.409 324.806 449.527 329.14 449.908 345.196C450.754 380.776 460.498 414.457 480.141 444.239C485.688 452.699 491.538 461.333 498.962 468.355L499.304 468.673C517.64 464.065 538.827 458.517 557.542 455.789C565.1 454.687 581.852 455.164 590.028 455.193L640.103 455.272L694.547 455.187C704.59 455.145 724 454.641 733.394 456.108C750.7 458.81 770.079 464.615 787.507 468.538Z"
+    ></path>
+    <path
+      fill={adapterHex}
+      transform="matrix(1.14209 0 0 1.14303 -287.807 0)"
+      d="M435.272 485.032C428.036 467.999 418.636 431.457 417.761 413.915C415.283 364.231 422.545 305.416 438.631 258.662C457.948 202.517 498.533 150.088 552.652 124.66C603.331 100.849 670.093 96.7772 722.996 115.842C776.688 135.192 816.484 173.389 840.94 224.633C862.631 270.083 868.496 315.676 868 365.389C867.778 387.587 867.102 403.266 862.787 425.537C858.572 447.291 852.327 463.456 844.985 484.056C836.541 506.494 820.358 528.756 803.406 545.589C801.217 546.09 799.018 546.544 796.81 546.953C791.409 547.9 784.779 548.874 780.096 545.568C778.668 537.655 778.909 523.637 778.002 514.921C777.437 505.429 776.111 495.758 775.727 486.279C775.46 479.691 783.188 472.675 787.507 468.538C816.562 438.818 840.23 383.496 838.526 341.783C837.161 308.38 811.65 268.734 788.15 246.093C749.44 207.925 687.164 189.834 633.791 190.834C584.169 191.629 536.925 212.237 502.578 248.068C484.55 266.865 471.328 287.806 459.512 310.915C452.409 324.806 449.527 329.14 449.908 345.196C450.754 380.776 460.498 414.457 480.141 444.239C485.688 452.699 491.538 461.333 498.962 468.355L499.304 468.673C502.857 473.08 508.479 478.714 512.666 482.652C511.108 497.803 507.469 529.403 504.171 543.954C495.926 546.293 482.303 548.939 474.851 544.274C460.813 535.484 441.04 499.342 435.272 485.032Z"
+    ></path>
+    <path
+      fill="#403433"
+      transform="matrix(1.14209 0 0 1.14303 -287.807 0)"
+      d="M773.972 531.289L774.852 532.195C775.537 534.984 775.115 537.871 774.9 540.758L774.268 540.115C773.539 537.494 773.865 534.065 773.972 531.289Z"
+    ></path>
   </svg>
 
   <p class="selector-note">
     Holder clip: <strong>{adapterColor}</strong> • Velcro strap:
     <strong>{velcroColor}</strong>
+  </p>
+  <p class="selector-note">
+    Shades: Bambu PETG HF (holder) + Cable Matters (velcro).
   </p>
 </div>

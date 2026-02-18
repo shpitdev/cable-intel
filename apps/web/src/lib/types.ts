@@ -28,6 +28,24 @@ export const LABEL_COLOR_HEX: Record<LabelColor, string> = {
   White: "#f5f5f1",
 };
 
+export const HOLDER_BAMBU_PETG_HF_HEX: Record<LabelColor, string> = {
+  Red: "#cc4c46",
+  Orange: "#d9843e",
+  Green: "#3e9162",
+  Blue: "#3f75d8",
+  Black: "#2b2f35",
+  White: "#f0eee6",
+};
+
+export const VELCRO_CABLE_MATTERS_HEX: Record<LabelColor, string> = {
+  Red: "#dc5a53",
+  Orange: "#f29a45",
+  Green: "#4f9d73",
+  Blue: "#4f83e8",
+  Black: "#1f2228",
+  White: "#dcd8cd",
+};
+
 export const CONNECTOR_OPTIONS = [
   "USB-C",
   "USB-A",

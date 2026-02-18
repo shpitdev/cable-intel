@@ -1,7 +1,11 @@
 <script lang="ts">
   import { inferMaxGbpsFromGeneration, resolutionRank } from "$lib/capability";
   import type { CableProfile, LabelRecommendation } from "$lib/types";
-  import { LABEL_COLOR_HEX } from "$lib/types";
+  import {
+    HOLDER_BAMBU_PETG_HF_HEX,
+    LABEL_COLOR_HEX,
+    VELCRO_CABLE_MATTERS_HEX,
+  } from "$lib/types";
   import HolderPreview from "./holder-preview.svelte";
 
   interface Props {
@@ -41,6 +45,22 @@
 
   const getColorHex = (value: string): string => {
     return LABEL_COLOR_HEX[value as keyof typeof LABEL_COLOR_HEX] ?? "#374151";
+  };
+
+  const getHolderHex = (value: string): string => {
+    return (
+      HOLDER_BAMBU_PETG_HF_HEX[
+        value as keyof typeof HOLDER_BAMBU_PETG_HF_HEX
+      ] ?? getColorHex(value)
+    );
+  };
+
+  const getVelcroHex = (value: string): string => {
+    return (
+      VELCRO_CABLE_MATTERS_HEX[
+        value as keyof typeof VELCRO_CABLE_MATTERS_HEX
+      ] ?? getColorHex(value)
+    );
   };
 
   const getPowerScale = (profileValue: CableProfile): CapabilityScale => {
@@ -313,7 +333,7 @@
         <p class="color-code-row">
           <span
             class="color-dot"
-            style={`--swatch:${getColorHex(recommendation.velcroColor)}`}
+            style={`--swatch:${getVelcroHex(recommendation.velcroColor)}`}
           ></span>
           <span class="font-semibold text-[color:var(--ink-strong)]"
             >{recommendation.velcroColor}</span
@@ -326,7 +346,7 @@
         <p class="color-code-row">
           <span
             class="color-dot"
-            style={`--swatch:${getColorHex(recommendation.adapterColor)}`}
+            style={`--swatch:${getHolderHex(recommendation.adapterColor)}`}
           ></span>
           <span class="font-semibold text-[color:var(--ink-strong)]"
             >{recommendation.adapterColor}</span
@@ -338,7 +358,9 @@
     <div class="mt-4">
       <HolderPreview
         adapterColor={recommendation.adapterColor}
+        adapterHex={getHolderHex(recommendation.adapterColor)}
         velcroColor={recommendation.velcroColor}
+        velcroHex={getVelcroHex(recommendation.velcroColor)}
       />
     </div>
 
