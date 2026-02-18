@@ -59,6 +59,12 @@ jobs:
       - name: Build
         run: bun run build
 
+      - name: TUI compile smoke test
+        run: |
+          mkdir -p apps/tui/dist
+          bun build apps/tui/src/index.tsx --compile --outfile apps/tui/dist/cable-intel-tui
+          ./apps/tui/dist/cable-intel-tui --help
+
       - name: Publish summary
         if: always()
         run: |
@@ -68,3 +74,4 @@ jobs:
           echo "- shopify ingest integration test" >> "$GITHUB_STEP_SUMMARY"
           echo "- shopify source integration test" >> "$GITHUB_STEP_SUMMARY"
           echo "- workspace build" >> "$GITHUB_STEP_SUMMARY"
+          echo "- TUI compile smoke test" >> "$GITHUB_STEP_SUMMARY"
