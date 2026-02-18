@@ -19,9 +19,6 @@ jobs:
           - os: ubuntu-latest
             asset_name: cable-intel-tui-linux-x64
             exec_name: cable-intel-tui-linux-x64
-          - os: macos-13
-            asset_name: cable-intel-tui-macos-x64
-            exec_name: cable-intel-tui-macos-x64
           - os: macos-14
             asset_name: cable-intel-tui-macos-arm64
             exec_name: cable-intel-tui-macos-arm64
