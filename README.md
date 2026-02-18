@@ -44,6 +44,8 @@ Web app: `http://localhost:5173`
   - `AI_SDK_TELEMETRY_ENABLED` (`true`/`false`)
   - `AI_SDK_TELEMETRY_RECORD_INPUTS` (`true`/`false`)
   - `AI_SDK_TELEMETRY_RECORD_OUTPUTS` (`true`/`false`)
+- Web analytics DSN env for SvelteKit injection:
+  - `PUBLIC_VERCEL_ANALYTICS_DSN`
 - Shopify-only ingest paths run without those keys.
 
 ## Current Product Focus
