@@ -179,6 +179,21 @@ const normalizeBrand = (vendor: string, fallbackBrand: string): string => {
   return cleanedVendor;
 };
 
+const ensureBrandInModel = (brand: string, model: string): string => {
+  const cleanedBrand = cleanText(brand);
+  const cleanedModel = cleanText(model);
+  if (!cleanedBrand) {
+    return cleanedModel;
+  }
+  if (!cleanedModel) {
+    return cleanedBrand;
+  }
+  if (cleanedModel.toLowerCase().includes(cleanedBrand.toLowerCase())) {
+    return cleanedModel;
+  }
+  return `${cleanedBrand} ${cleanedModel}`;
+};
+
 const escapeHtml = (value: string): string => {
   return value
     .replaceAll("&", "&amp;")
@@ -627,8 +642,9 @@ const buildProductExtractionContext = (
   productPath: string,
   product: ShopifyProduct
 ): ProductExtractionContext => {
-  const model = cleanText(product.title ?? product.name);
   const brand = normalizeBrand(product.vendor ?? "", template.name);
+  const rawModel = cleanText(product.title ?? product.name);
+  const model = ensureBrandInModel(brand, rawModel);
   const description = cleanText(product.description);
   const keyFeatures = getKeyFeatureText(product);
   const contextText = [model, description, ...keyFeatures].join("\n");
