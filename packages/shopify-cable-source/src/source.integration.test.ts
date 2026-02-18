@@ -175,4 +175,21 @@ describe("shopify cable source integration", () => {
       }
     }
   }, 120_000);
+
+  it("prefixes model titles with brand when storefront title omits it", async () => {
+    const source = createShopifyCableSource(ankerTemplate);
+    const result = await source.extractFromProductUrl(
+      "https://www.anker.com/products/a8758"
+    );
+
+    expect(result).not.toBeNull();
+    if (!result) {
+      return;
+    }
+
+    expect(result.cables.length).toBeGreaterThan(0);
+    for (const cable of result.cables) {
+      expect(cable.model.toLowerCase().includes("anker")).toBe(true);
+    }
+  }, 120_000);
 });
