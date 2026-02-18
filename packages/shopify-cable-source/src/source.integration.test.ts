@@ -74,4 +74,26 @@ describe("shopify cable source integration", () => {
     expect(skus.has("A82E2011")).toBe(true);
     expect(has240w).toBe(true);
   }, 120_000);
+
+  it("does not classify Lightning cables as Thunderbolt/USB4 class", async () => {
+    const source = createShopifyCableSource(ankerTemplate);
+    const result = await source.extractFromProductUrl(
+      "https://www.anker.com/products/a8633"
+    );
+
+    expect(result).not.toBeNull();
+    if (!result) {
+      return;
+    }
+
+    expect(result.cables.length).toBeGreaterThan(0);
+    for (const cable of result.cables) {
+      expect(
+        cable.connectorPair.from === "Lightning" ||
+          cable.connectorPair.to === "Lightning"
+      ).toBe(true);
+      expect(cable.data.maxGbps).toBeLessThanOrEqual(0.48);
+      expect(cable.data.usbGeneration).toContain("USB 2.0");
+    }
+  }, 120_000);
 });

@@ -1,4 +1,5 @@
 import {
+  clampDataCapabilityByConnector,
   inferMaxGbpsFromGeneration,
   normalizeConnector,
   parsePositiveNumber,
@@ -119,6 +120,18 @@ const getDisplayName = (row: CatalogCableRow): string => {
 };
 
 export const mapCatalogRowToProfile = (row: CatalogCableRow): CableProfile => {
+  const connectorFrom = normalizeConnector(row.connectorFrom);
+  const connectorTo = normalizeConnector(row.connectorTo);
+  const normalizedData = clampDataCapabilityByConnector(
+    {
+      ...row.data,
+      maxGbps:
+        row.data.maxGbps ?? inferMaxGbpsFromGeneration(row.data.usbGeneration),
+    },
+    connectorFrom,
+    connectorTo
+  );
+
   return {
     source: "catalog",
     variantId: row.variantId,
@@ -130,14 +143,10 @@ export const mapCatalogRowToProfile = (row: CatalogCableRow): CableProfile => {
     productUrl: row.productUrl,
     imageUrls: row.imageUrls,
     evidenceRefs: row.evidenceRefs,
-    connectorFrom: normalizeConnector(row.connectorFrom),
-    connectorTo: normalizeConnector(row.connectorTo),
+    connectorFrom,
+    connectorTo,
     power: row.power,
-    data: {
-      ...row.data,
-      maxGbps:
-        row.data.maxGbps ?? inferMaxGbpsFromGeneration(row.data.usbGeneration),
-    },
+    data: normalizedData,
     video: row.video,
   };
 };
@@ -148,22 +157,29 @@ export const buildProfileFromMarkings = (
   const maxWatts = draft.dataOnly ? 0 : parsePositiveNumber(draft.watts);
   const parsedGbps = parsePositiveNumber(draft.gbps);
   const parsedRefreshHz = parsePositiveNumber(draft.maxRefreshHz);
-
-  return {
-    source: "markings",
-    connectorFrom: normalizeConnector(draft.connectorFrom),
-    connectorTo: normalizeConnector(draft.connectorTo),
-    power: {
-      maxWatts,
-      pdSupported: draft.watts.toLowerCase().includes("pd"),
-    },
-    data: {
+  const connectorFrom = normalizeConnector(draft.connectorFrom);
+  const connectorTo = normalizeConnector(draft.connectorTo);
+  const normalizedData = clampDataCapabilityByConnector(
+    {
       usbGeneration: draft.usbGeneration.trim() || undefined,
       maxGbps:
         parsedGbps ??
         inferMaxGbpsFromGeneration(draft.usbGeneration) ??
         undefined,
     },
+    connectorFrom,
+    connectorTo
+  );
+
+  return {
+    source: "markings",
+    connectorFrom,
+    connectorTo,
+    power: {
+      maxWatts,
+      pdSupported: draft.watts.toLowerCase().includes("pd"),
+    },
+    data: normalizedData,
     video: {
       explicitlySupported:
         draft.videoSupport === "unknown"

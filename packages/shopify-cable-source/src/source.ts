@@ -408,12 +408,17 @@ const getPowerCapability = (text: string) => {
   };
 };
 
-const getDataCapability = (text: string) => {
+const getDataCapability = (
+  text: string,
+  connectorPair: { from: string; to: string }
+) => {
+  const isLightningCable =
+    connectorPair.from === "Lightning" || connectorPair.to === "Lightning";
   const speeds = [...text.matchAll(DATA_RATE_REGEX)]
     .map((match) => Number(match[1]))
     .filter((value) => Number.isFinite(value) && value > 0);
 
-  const thunderbolt = text.match(THUNDERBOLT_REGEX);
+  const thunderbolt = isLightningCable ? null : text.match(THUNDERBOLT_REGEX);
   const usbGenerationMatch = text.match(USB_GENERATION_REGEX);
 
   let usbGeneration: string | undefined;
@@ -423,8 +428,22 @@ const getDataCapability = (text: string) => {
     usbGeneration = `USB ${usbGenerationMatch[1]}`;
   }
 
+  let maxGbps: number | undefined;
+  if (speeds.length > 0) {
+    maxGbps = Math.max(...speeds);
+  } else if (isLightningCable) {
+    maxGbps = 0.48;
+  }
+
+  if (isLightningCable) {
+    return {
+      maxGbps: typeof maxGbps === "number" ? Math.min(maxGbps, 0.48) : 0.48,
+      usbGeneration: "USB 2.0 (Lightning ceiling)",
+    };
+  }
+
   return {
-    maxGbps: speeds.length > 0 ? Math.max(...speeds) : undefined,
+    maxGbps,
     usbGeneration,
   };
 };
@@ -547,7 +566,7 @@ const buildProductExtractionContext = (
   const keyFeatures = getKeyFeatureText(product);
   const contextText = [model, description, ...keyFeatures].join("\n");
   const connectorPair = parseConnectorPair(model, contextText);
-  const data = getDataCapability(contextText);
+  const data = getDataCapability(contextText, connectorPair);
   const power = getPowerCapability(contextText);
   const variants = Array.isArray(product.variants)
     ? product.variants
