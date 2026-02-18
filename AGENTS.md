@@ -133,3 +133,5 @@ Most formatting and common issues are automatically fixed by Biome. Run `bun x u
 - Prefer multiple small commits over one large commit when implementing a feature.
 - Open PRs that bundle complete, reviewable functionality once the full unit of work is done.
 - Push progress regularly at stable stopping points so work is recoverable and reviewable.
+- Do not manually merge early; let required checks complete and rely on auto-merge.
+- If checks fail, keep iterating in the PR until all required checks are green.
