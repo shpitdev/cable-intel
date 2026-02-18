@@ -21,6 +21,8 @@ on:
 jobs:
   checks:
     runs-on: ubuntu-latest
+    env:
+      PUBLIC_CONVEX_URL: "https://example.convex.cloud"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
