@@ -5,7 +5,8 @@
   "module": "src/index.tsx",
   "scripts": {
     "start": "bun src/index.tsx",
-    "dev": "bun --watch src/index.tsx"
+    "dev": "bun --watch src/index.tsx",
+    "build:bin": "bun build src/index.tsx --compile --outfile dist/cable-intel-tui"
   },
   "dependencies": {
     "@babel/core": "^7.29.0",
