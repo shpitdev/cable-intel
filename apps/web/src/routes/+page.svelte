@@ -9,10 +9,13 @@
   import type {
     CableProfile,
     CatalogCableRow,
-    IdentifyMode,
     MarkingsDraft,
   } from "$lib/types";
   import { DEFAULT_MARKINGS_DRAFT } from "$lib/types";
+  import {
+    catalogSearchStore,
+    identifyModeStore,
+  } from "$lib/workspace-ui-state";
   import CatalogPicker from "../components/catalog-picker.svelte";
   import LabelOutput from "../components/label-output.svelte";
   import MarkingsForm from "../components/markings-form.svelte";
@@ -121,9 +124,7 @@
     limit: CATALOG_LIMIT,
   });
 
-  let identifyMode = $state<IdentifyMode>("catalog");
   let selectedVariantId = $state("");
-  let catalogSearch = $state("");
   let facetSelections = $state<Record<FacetDimension, string[]>>({
     ...DEFAULT_FACET_SELECTIONS,
   });
@@ -294,7 +295,7 @@
   });
 
   const baseFilteredCatalogProfiles = $derived.by(() => {
-    const term = catalogSearch.trim().toLowerCase();
+    const term = $catalogSearchStore.trim().toLowerCase();
     const termFiltered = allCatalogProfiles.filter((profile) => {
       const searchable = [
         profile.displayName,
@@ -399,7 +400,7 @@
   });
 
   $effect(() => {
-    if (identifyMode !== "catalog") {
+    if ($identifyModeStore !== "catalog") {
       return;
     }
 
@@ -428,7 +429,7 @@
   });
 
   const activeProfile = $derived.by((): CableProfile | null => {
-    if (identifyMode === "catalog") {
+    if ($identifyModeStore === "catalog") {
       return selectedCatalogProfile;
     }
 
@@ -441,14 +442,6 @@
     }
     return recommendLabels(activeProfile);
   });
-
-  const setIdentifyMode = (mode: IdentifyMode): void => {
-    identifyMode = mode;
-  };
-
-  const setCatalogSearch = (value: string): void => {
-    catalogSearch = value;
-  };
 
   const setSelectedVariantId = (variantId: string): void => {
     selectedVariantId = variantId;
@@ -487,43 +480,8 @@
   };
 </script>
 
-<div class="page-wrap space-y-6">
-  <section class="query-dock fade-in delay-1">
-    <div class="query-dock-controls space-y-3">
-      <div class="segment-control">
-        <button
-          type="button"
-          class={identifyMode === "catalog" ? "is-active" : ""}
-          onclick={() => setIdentifyMode("catalog")}
-        >
-          Catalog
-        </button>
-        <button
-          type="button"
-          class={identifyMode === "markings" ? "is-active" : ""}
-          onclick={() => setIdentifyMode("markings")}
-        >
-          Manual entry
-        </button>
-      </div>
-
-      {#if identifyMode === "catalog"}
-        <label class="field">
-          <span class="field-label">Catalog query</span>
-          <input
-            type="text"
-            class="field-input"
-            placeholder='Try: "usb-c to c, 240w, braided, anker"'
-            value={catalogSearch}
-            oninput={(event) =>
-              setCatalogSearch((event.currentTarget as HTMLInputElement).value)}
-          >
-        </label>
-      {/if}
-    </div>
-  </section>
-
-  {#if identifyMode === "catalog"}
+<div class="page-wrap">
+  {#if $identifyModeStore === "catalog"}
     <div class="catalog-workspace">
       <aside class="facet-nav fade-in delay-2">
         <div class="facet-rail-header">
@@ -574,8 +532,8 @@
         </div>
 
         <p class="panel-subtitle">
-          Pick the matching cable row. Results stay in place while the top query
-          bar remains locked.
+          Pick the matching cable row. Use the top bar query and filters to
+          narrow quickly.
         </p>
 
         <div class="catalog-results-wrap mt-4">
