@@ -124,3 +124,12 @@ Biome's linter will catch most issues automatically. Focus your attention on:
 ---
 
 Most formatting and common issues are automatically fixed by Biome. Run `bun x ultracite fix` before committing to ensure compliance.
+
+---
+
+## Collaboration Workflow
+
+- Commit as you go in small logical commits (focused scope, clear message).
+- Prefer multiple small commits over one large commit when implementing a feature.
+- Open PRs that bundle complete, reviewable functionality once the full unit of work is done.
+- Push progress regularly at stable stopping points so work is recoverable and reviewable.
