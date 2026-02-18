@@ -493,26 +493,92 @@ const collectCandidatesForWorkflowItem = (
   specsByCanonicalUrl: Map<string, WorkflowSpecCandidate[]>,
   candidatesBySpecId: Map<Id<"normalizedSpecs">, WorkflowSpecCandidate>
 ): WorkflowSpecCandidate[] => {
-  const itemKeys = [
+  const itemKeys = new Set(
+    [
+      canonicalizeUrlForGrouping(item.canonicalUrl),
+      canonicalizeUrlForGrouping(item.url),
+    ].filter(Boolean)
+  );
+
+  const getLatestEvidenceFetchedAt = (
+    candidate: WorkflowSpecCandidate
+  ): number => {
+    return candidate.evidenceSources.reduce((latest, source) => {
+      return Math.max(latest, source.fetchedAt);
+    }, 0);
+  };
+
+  const candidateMatchesItem = (candidate: WorkflowSpecCandidate): boolean => {
+    const variantKey = canonicalizeUrlForGrouping(candidate.variant.productUrl);
+    if (variantKey && itemKeys.has(variantKey)) {
+      return true;
+    }
+
+    for (const source of candidate.evidenceSources) {
+      const canonicalKey = canonicalizeUrlForGrouping(source.canonicalUrl);
+      if (canonicalKey && itemKeys.has(canonicalKey)) {
+        return true;
+      }
+      const urlKey = canonicalizeUrlForGrouping(source.url);
+      if (urlKey && itemKeys.has(urlKey)) {
+        return true;
+      }
+    }
+
+    return false;
+  };
+
+  const isPreferredCandidate = (
+    candidate: WorkflowSpecCandidate,
+    current: WorkflowSpecCandidate
+  ): boolean => {
+    const candidateMatches = candidateMatchesItem(candidate);
+    const currentMatches = candidateMatchesItem(current);
+    if (candidateMatches !== currentMatches) {
+      return candidateMatches;
+    }
+
+    const candidateScore = scoreSpecCompleteness(candidate.spec);
+    const currentScore = scoreSpecCompleteness(current.spec);
+    if (candidateScore !== currentScore) {
+      return candidateScore > currentScore;
+    }
+
+    const candidateFetchedAt = getLatestEvidenceFetchedAt(candidate);
+    const currentFetchedAt = getLatestEvidenceFetchedAt(current);
+    if (candidateFetchedAt !== currentFetchedAt) {
+      return candidateFetchedAt > currentFetchedAt;
+    }
+
+    return candidate.spec._creationTime > current.spec._creationTime;
+  };
+
+  const itemKeyList = [
     canonicalizeUrlForGrouping(item.canonicalUrl),
     canonicalizeUrlForGrouping(item.url),
   ].filter(Boolean);
-  const candidates = new Map<Id<"normalizedSpecs">, WorkflowSpecCandidate>();
-  for (const itemKey of itemKeys) {
+  const candidatesByVariant = new Map<
+    Id<"cableVariants">,
+    WorkflowSpecCandidate
+  >();
+  for (const itemKey of itemKeyList) {
     const matches = specsByCanonicalUrl.get(itemKey) ?? [];
     for (const match of matches) {
-      candidates.set(match.spec._id, match);
+      const current = candidatesByVariant.get(match.variant._id);
+      if (!current || isPreferredCandidate(match, current)) {
+        candidatesByVariant.set(match.variant._id, match);
+      }
     }
   }
 
-  if (candidates.size === 0 && item.normalizedSpecId) {
+  if (candidatesByVariant.size === 0 && item.normalizedSpecId) {
     const fallback = candidatesBySpecId.get(item.normalizedSpecId);
     if (fallback) {
-      candidates.set(fallback.spec._id, fallback);
+      candidatesByVariant.set(fallback.variant._id, fallback);
     }
   }
 
-  return [...candidates.values()].sort((left, right) => {
+  return [...candidatesByVariant.values()].sort((left, right) => {
     const leftVariantKey =
       normalizeToken(left.variant.variant) ||
       normalizeToken(left.variant.sku) ||

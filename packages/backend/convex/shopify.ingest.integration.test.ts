@@ -133,6 +133,13 @@ describe("shopify ingest integration", () => {
       const topCables = await t.query(api.ingestQueries.getTopCables, {
         limit: DEDUPE_TEST_TOP_CABLE_LIMIT,
       });
+      const workflowReport = await t.query(
+        api.ingestQueries.getWorkflowReport,
+        {
+          workflowRunId: ingestResult.workflowRunId,
+          limit: DEDUPE_TEST_TOP_CABLE_LIMIT,
+        }
+      );
       const overlapRows = topCables.filter((row) => {
         return (
           row.productUrl?.includes(OVERLAP_PRODUCT_SLUG_ONE) ||
@@ -152,6 +159,25 @@ describe("shopify ingest integration", () => {
       expect(skuCounts.size).toBeGreaterThan(0);
       expect(
         [...skuCounts.values()].every((count) => count === 1)
+      ).toBeTruthy();
+
+      const duplicateWorkflowRows = workflowReport.cables.filter((row) => {
+        return (
+          row.sourceUrl.includes(OVERLAP_PRODUCT_SLUG_TWO) &&
+          row.sku &&
+          row.sku.trim() !== ""
+        );
+      });
+      const workflowSkuCounts = new Map<string, number>();
+      for (const row of duplicateWorkflowRows) {
+        const sku = row.sku?.trim();
+        if (!sku) {
+          continue;
+        }
+        workflowSkuCounts.set(sku, (workflowSkuCounts.get(sku) ?? 0) + 1);
+      }
+      expect(
+        [...workflowSkuCounts.values()].every((count) => count === 1)
       ).toBeTruthy();
     },
     TEST_TIMEOUT_MS
