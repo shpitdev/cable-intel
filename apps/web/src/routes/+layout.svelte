@@ -1,11 +1,11 @@
 <script lang="ts">
   import "../app.css";
   import { setupConvex } from "convex-svelte";
-  import { env } from "$env/dynamic/public";
+  import { PUBLIC_CONVEX_URL } from "$env/static/public";
   import Header from "../components/header.svelte";
 
   const { children } = $props();
-  const convexUrl = env.PUBLIC_CONVEX_URL;
+  const convexUrl = PUBLIC_CONVEX_URL;
   if (!convexUrl) {
     throw new Error(
       "Missing PUBLIC_CONVEX_URL. Set it directly or configure CONVEX_DEPLOY_KEY in Vercel."
