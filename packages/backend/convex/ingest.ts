@@ -324,7 +324,13 @@ const extractCablesFromShopifySource = async (
 const extractCableFromSnapshot = async (
   model: string,
   snapshot: ScrapedSnapshot,
-  contentHash: string
+  contentHash: string,
+  telemetry: {
+    enabled: boolean;
+    metadata: Record<string, string>;
+    recordInputs: boolean;
+    recordOutputs: boolean;
+  }
 ) => {
   const prompt = buildExtractionPrompt(snapshot, contentHash);
   const { object } = await generateObject({
@@ -333,6 +339,13 @@ const extractCableFromSnapshot = async (
     system: EXTRACTION_SYSTEM_PROMPT,
     prompt,
     temperature: 0,
+    experimental_telemetry: {
+      isEnabled: telemetry.enabled,
+      functionId: "convex.ingest.extractCableFromSnapshot",
+      metadata: telemetry.metadata,
+      recordInputs: telemetry.recordInputs,
+      recordOutputs: telemetry.recordOutputs,
+    },
   });
 
   const parsed = parseExtractionOutput(object);
@@ -433,7 +446,17 @@ const processWorkflowItem = async (
         const parsed = await extractCableFromSnapshot(
           providerConfig.model,
           snapshot,
-          contentHash
+          contentHash,
+          {
+            enabled: providerConfig.aiTelemetryEnabled,
+            recordInputs: providerConfig.aiTelemetryRecordInputs,
+            recordOutputs: providerConfig.aiTelemetryRecordOutputs,
+            metadata: {
+              canonicalUrl: snapshot.canonicalUrl,
+              workflowRunId,
+              workflowItemId: itemId,
+            },
+          }
         );
         parsedCables = [parsed];
       }
