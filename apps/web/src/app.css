@@ -239,6 +239,19 @@ a {
   letter-spacing: -0.01em;
 }
 
+.flow-step {
+  display: inline-grid;
+  place-items: center;
+  width: 1.35rem;
+  height: 1.35rem;
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: var(--accent-strong);
+  background: rgb(15 118 110 / 0.14);
+  border: 1px solid rgb(15 118 110 / 0.32);
+  border-radius: 999px;
+}
+
 .panel-subtitle {
   margin-top: 0.32rem;
   font-size: 0.9rem;
@@ -441,6 +454,9 @@ a {
 .facet-options {
   display: grid;
   gap: 0.32rem;
+  max-height: 13.5rem;
+  padding-right: 0.08rem;
+  overflow: auto;
 }
 
 .facet-option {
@@ -533,19 +549,19 @@ a {
 }
 
 .variant-chip-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8.8rem, 1fr));
   gap: 0.5rem;
   padding: 0.55rem 0.15rem 0;
-  overflow-x: auto;
 }
 
 .variant-chip {
   display: grid;
   gap: 0.1rem;
-  min-width: 7.8rem;
+  min-width: 0;
   padding: 0.46rem 0.58rem;
   text-align: left;
-  white-space: nowrap;
+  white-space: normal;
   background: rgb(255 255 255 / 0.84);
   border: 1px solid var(--line);
   border-radius: 0.7rem;
@@ -562,8 +578,13 @@ a {
 }
 
 .variant-chip-label {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  -webkit-line-clamp: 2;
   font-size: 0.75rem;
   font-weight: 700;
+  line-height: 1.25;
   color: var(--ink-strong);
 }
 
@@ -755,9 +776,49 @@ a {
 .holder-preview svg {
   display: block;
   width: 100%;
-  max-width: 28rem;
+  max-width: 30rem;
   height: auto;
   margin-inline: auto;
+}
+
+.preview-callout {
+  font-size: 20px;
+  font-weight: 700;
+  fill: rgb(45 35 25 / 0.92);
+  stroke: rgb(45 35 25 / 0.62);
+  stroke-width: 2;
+}
+
+.preview-callout circle {
+  fill: rgb(45 35 25 / 0.92);
+  stroke: none;
+}
+
+.preview-callout text {
+  stroke: none;
+}
+
+.preview-key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.8rem;
+  margin-top: 0.32rem;
+}
+
+.preview-key-item {
+  display: inline-flex;
+  gap: 0.36rem;
+  align-items: center;
+  font-size: 0.74rem;
+  color: var(--ink-muted);
+}
+
+.preview-key-dot {
+  width: 0.72rem;
+  height: 0.72rem;
+  background: var(--swatch);
+  border: 1px solid rgb(31 41 55 / 0.35);
+  border-radius: 999px;
 }
 
 .note {

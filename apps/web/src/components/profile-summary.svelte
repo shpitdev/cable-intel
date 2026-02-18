@@ -1,6 +1,8 @@
 <script lang="ts">
   import type { CableProfile } from "$lib/types";
 
+  const USB2_GBPS = 0.48;
+
   interface Props {
     profile: CableProfile | null;
   }
@@ -12,14 +14,31 @@
   };
 
   const formatData = (profileValue: CableProfile): string => {
-    const parts: string[] = [];
-    if (typeof profileValue.data.maxGbps === "number") {
-      parts.push(`${profileValue.data.maxGbps}Gbps`);
+    const gbps = profileValue.data.maxGbps;
+    const generation = profileValue.data.usbGeneration?.trim();
+    const normalizedGeneration = generation?.toLowerCase() ?? "";
+
+    if (typeof gbps === "number") {
+      if (Math.abs(gbps - USB2_GBPS) < 0.01) {
+        return "USB 2.0 (480 Mbps)";
+      }
+      if (generation) {
+        return `${generation} (${gbps}Gbps)`;
+      }
+      return `${gbps}Gbps`;
     }
-    if (profileValue.data.usbGeneration) {
-      parts.push(profileValue.data.usbGeneration);
+
+    if (generation) {
+      if (
+        normalizedGeneration.includes("usb2") ||
+        normalizedGeneration.includes("usb 2")
+      ) {
+        return "USB 2.0 (480 Mbps)";
+      }
+      return generation;
     }
-    return parts.join(" / ") || "Not listed";
+
+    return "Not listed";
   };
 
   const getVideoSupportText = (value?: boolean): string => {
@@ -60,7 +79,10 @@
 
 <section class="panel panel-soft fade-in delay-2">
   <div class="flex items-center justify-between gap-3">
-    <h3 class="panel-title">Cable Profile</h3>
+    <div class="flex items-center gap-2">
+      <span class="flow-step">1</span>
+      <h3 class="panel-title">Cable Profile</h3>
+    </div>
     {#if profile?.source}
       <span class="tag">{profile.source}</span>
     {/if}

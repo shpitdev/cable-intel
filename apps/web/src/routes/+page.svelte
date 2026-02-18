@@ -376,8 +376,22 @@
           selected: selectedValues.includes(value),
         }))
         .sort((left, right) => {
+          if (dimension === "brand") {
+            if (right.count !== left.count) {
+              return right.count - left.count;
+            }
+            return left.label.localeCompare(right.label);
+          }
           return sortFacetValues(dimension, left.value, right.value);
         });
+
+      const visibleDimensionOptions = dimensionOptions.filter((option) => {
+        return (
+          option.count > 0 ||
+          option.selected ||
+          option.value === FACET_UNKNOWN_VALUE
+        );
+      });
 
       byDimension[dimension] = [
         {
@@ -386,7 +400,7 @@
           count: totalCount,
           selected: selectedValues.length === 0,
         },
-        ...dimensionOptions,
+        ...visibleDimensionOptions,
       ];
     }
 

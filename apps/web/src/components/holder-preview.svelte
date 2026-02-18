@@ -13,7 +13,7 @@
 
 <div class="holder-preview">
   <svg
-    viewBox="0 0 852 951"
+    viewBox="140 110 620 730"
     role="img"
     aria-label="Printable holder clip and velcro strap preview"
   >
@@ -32,7 +32,30 @@
       transform="matrix(1.14209 0 0 1.14303 -287.807 0)"
       d="M773.972 531.289L774.852 532.195C775.537 534.984 775.115 537.871 774.9 540.758L774.268 540.115C773.539 537.494 773.865 534.065 773.972 531.289Z"
     ></path>
+
+    <g class="preview-callout">
+      <circle cx="580" cy="305" r="6"></circle>
+      <path d="M586 305 H705"></path>
+      <text x="710" y="309">Velcro strap</text>
+    </g>
+
+    <g class="preview-callout">
+      <circle cx="456" cy="608" r="6"></circle>
+      <path d="M462 608 H705"></path>
+      <text x="710" y="612">Holder clip</text>
+    </g>
   </svg>
+
+  <div class="preview-key">
+    <span class="preview-key-item">
+      <span class="preview-key-dot" style={`--swatch:${adapterHex}`}></span>
+      Holder clip ({adapterColor})
+    </span>
+    <span class="preview-key-item">
+      <span class="preview-key-dot" style={`--swatch:${velcroHex}`}></span>
+      Velcro strap ({velcroColor})
+    </span>
+  </div>
 
   <p class="selector-note">
     Holder clip: <strong>{adapterColor}</strong> • Velcro strap:

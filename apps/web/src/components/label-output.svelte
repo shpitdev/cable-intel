@@ -305,7 +305,10 @@
 
 <section class="panel panel-soft fade-in delay-3">
   <div class="flex items-center justify-between gap-3">
-    <h3 class="panel-title">Label Recommendation</h3>
+    <div class="flex items-center gap-2">
+      <span class="flow-step">2</span>
+      <h3 class="panel-title">Label Recommendation</h3>
+    </div>
     <button
       type="button"
       class="inline-action"
