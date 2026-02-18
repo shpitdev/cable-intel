@@ -39,6 +39,11 @@ Web app: `http://localhost:5173`
 
 - Backend ingest is Shopify-first with Firecrawl + AI fallback.
 - `AI_GATEWAY_API_KEY` and `FIRECRAWL_API_KEY` are required for fallback runs.
+- AI SDK telemetry for Convex ingest calls is enabled by default.
+- Optional telemetry env overrides:
+  - `AI_SDK_TELEMETRY_ENABLED` (`true`/`false`)
+  - `AI_SDK_TELEMETRY_RECORD_INPUTS` (`true`/`false`)
+  - `AI_SDK_TELEMETRY_RECORD_OUTPUTS` (`true`/`false`)
 - Shopify-only ingest paths run without those keys.
 
 ## Current Product Focus

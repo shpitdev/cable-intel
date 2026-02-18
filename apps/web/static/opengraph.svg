@@ -1,0 +1,31 @@
+<svg width="1200" height="630" viewBox="0 0 1200 630" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1200" y2="630" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#020617"/>
+      <stop offset="0.45" stop-color="#0F172A"/>
+      <stop offset="1" stop-color="#111827"/>
+    </linearGradient>
+    <linearGradient id="traceA" x1="220" y1="220" x2="980" y2="420" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#22D3EE"/>
+      <stop offset="1" stop-color="#2563EB"/>
+    </linearGradient>
+    <linearGradient id="traceB" x1="220" y1="410" x2="980" y2="230" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2DD4BF"/>
+      <stop offset="1" stop-color="#14B8A6"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <circle cx="1070" cy="126" r="180" fill="#0EA5E91A"/>
+  <circle cx="130" cy="560" r="210" fill="#14B8A61F"/>
+
+  <path d="M220 248C220 204.922 254.922 170 298 170H836C879.078 170 914 204.922 914 248V276C914 319.078 879.078 354 836 354H666" stroke="url(#traceA)" stroke-width="28" stroke-linecap="round"/>
+  <path d="M220 414H758C833.111 414 894 353.111 894 278V248" stroke="url(#traceB)" stroke-width="28" stroke-linecap="round"/>
+  <rect x="896" y="202" width="72" height="110" rx="20" fill="#E2E8F0"/>
+  <rect x="880" y="226" width="16" height="24" rx="8" fill="#E2E8F0"/>
+  <rect x="880" y="262" width="16" height="24" rx="8" fill="#E2E8F0"/>
+  <circle cx="290" cy="414" r="18" fill="#67E8F9"/>
+  <circle cx="242" cy="414" r="14" fill="#A5F3FC"/>
+
+  <text x="120" y="540" fill="#F8FAFC" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-size="64" font-weight="700">Cable Intel</text>
+  <text x="120" y="584" fill="#93C5FD" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-size="28" font-weight="500">Find cables without guesswork</text>
+</svg>

@@ -3,6 +3,11 @@ import { getIngestConfig, ingestDefaults } from "./config";
 
 const ORIGINAL_AI_GATEWAY_API_KEY = process.env.AI_GATEWAY_API_KEY;
 const ORIGINAL_FIRECRAWL_API_KEY = process.env.FIRECRAWL_API_KEY;
+const ORIGINAL_AI_SDK_TELEMETRY_ENABLED = process.env.AI_SDK_TELEMETRY_ENABLED;
+const ORIGINAL_AI_SDK_TELEMETRY_RECORD_INPUTS =
+  process.env.AI_SDK_TELEMETRY_RECORD_INPUTS;
+const ORIGINAL_AI_SDK_TELEMETRY_RECORD_OUTPUTS =
+  process.env.AI_SDK_TELEMETRY_RECORD_OUTPUTS;
 
 afterEach(() => {
   if (ORIGINAL_AI_GATEWAY_API_KEY === undefined) {
@@ -15,6 +20,26 @@ afterEach(() => {
     process.env.FIRECRAWL_API_KEY = undefined;
   } else {
     process.env.FIRECRAWL_API_KEY = ORIGINAL_FIRECRAWL_API_KEY;
+  }
+
+  if (ORIGINAL_AI_SDK_TELEMETRY_ENABLED === undefined) {
+    process.env.AI_SDK_TELEMETRY_ENABLED = undefined;
+  } else {
+    process.env.AI_SDK_TELEMETRY_ENABLED = ORIGINAL_AI_SDK_TELEMETRY_ENABLED;
+  }
+
+  if (ORIGINAL_AI_SDK_TELEMETRY_RECORD_INPUTS === undefined) {
+    process.env.AI_SDK_TELEMETRY_RECORD_INPUTS = undefined;
+  } else {
+    process.env.AI_SDK_TELEMETRY_RECORD_INPUTS =
+      ORIGINAL_AI_SDK_TELEMETRY_RECORD_INPUTS;
+  }
+
+  if (ORIGINAL_AI_SDK_TELEMETRY_RECORD_OUTPUTS === undefined) {
+    process.env.AI_SDK_TELEMETRY_RECORD_OUTPUTS = undefined;
+  } else {
+    process.env.AI_SDK_TELEMETRY_RECORD_OUTPUTS =
+      ORIGINAL_AI_SDK_TELEMETRY_RECORD_OUTPUTS;
   }
 });
 
@@ -31,8 +56,14 @@ describe("getIngestConfig", () => {
   it("returns required secrets with code defaults", () => {
     process.env.AI_GATEWAY_API_KEY = "test-ai-key";
     process.env.FIRECRAWL_API_KEY = "test-firecrawl-key";
+    process.env.AI_SDK_TELEMETRY_ENABLED = undefined;
+    process.env.AI_SDK_TELEMETRY_RECORD_INPUTS = undefined;
+    process.env.AI_SDK_TELEMETRY_RECORD_OUTPUTS = undefined;
 
     expect(getIngestConfig()).toEqual({
+      aiTelemetryEnabled: ingestDefaults.aiTelemetryEnabled,
+      aiTelemetryRecordInputs: ingestDefaults.aiTelemetryRecordInputs,
+      aiTelemetryRecordOutputs: ingestDefaults.aiTelemetryRecordOutputs,
       aiGatewayApiKey: "test-ai-key",
       firecrawlApiKey: "test-firecrawl-key",
       model: ingestDefaults.model,
@@ -40,5 +71,29 @@ describe("getIngestConfig", () => {
       initialRetryDelayMs: ingestDefaults.initialRetryDelayMs,
       maxRetryDelayMs: ingestDefaults.maxRetryDelayMs,
     });
+  });
+
+  it("parses telemetry boolean env overrides", () => {
+    process.env.AI_GATEWAY_API_KEY = "test-ai-key";
+    process.env.FIRECRAWL_API_KEY = "test-firecrawl-key";
+    process.env.AI_SDK_TELEMETRY_ENABLED = "false";
+    process.env.AI_SDK_TELEMETRY_RECORD_INPUTS = "1";
+    process.env.AI_SDK_TELEMETRY_RECORD_OUTPUTS = "yes";
+
+    expect(getIngestConfig()).toMatchObject({
+      aiTelemetryEnabled: false,
+      aiTelemetryRecordInputs: true,
+      aiTelemetryRecordOutputs: true,
+    });
+  });
+
+  it("throws on invalid telemetry boolean env values", () => {
+    process.env.AI_GATEWAY_API_KEY = "test-ai-key";
+    process.env.FIRECRAWL_API_KEY = "test-firecrawl-key";
+    process.env.AI_SDK_TELEMETRY_ENABLED = "maybe";
+
+    expect(() => getIngestConfig()).toThrow(
+      "Invalid boolean environment variable: AI_SDK_TELEMETRY_ENABLED=maybe"
+    );
   });
 });
