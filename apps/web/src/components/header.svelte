@@ -1,17 +1,18 @@
 <script lang="ts">
-  const links = [{ to: "/", label: "Home" }];
+  const links = [{ to: "/", label: "Workspace" }];
 </script>
 
-<div>
-  <div class="flex flex-row items-center justify-between px-4 py-2 md:px-6">
-    <nav class="flex gap-4 text-lg">
+<header class="top-nav">
+  <div class="top-nav-inner">
+    <a href="/" class="block">
+      <p class="brand-title">Cable Intel</p>
+      <p class="brand-subtitle">Find cables without guesswork</p>
+    </a>
+
+    <nav class="flex items-center gap-2" aria-label="Main">
       {#each links as link (link.to)}
-        <a href={link.to} class="hover:text-neutral-400 transition-colors">
-          {link.label}
-        </a>
+        <a href={link.to} class="nav-link">{link.label}</a>
       {/each}
     </nav>
-    <div class="flex items-center gap-2"></div>
   </div>
-  <hr class="border-neutral-800">
-</div>
+</header>

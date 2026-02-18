@@ -10,5 +10,5 @@
 
 <div class="grid h-svh grid-rows-[auto_1fr]">
   <Header />
-  <main class="overflow-y-auto">{@render children()}</main>
+  <main class="app-main">{@render children()}</main>
 </div>
