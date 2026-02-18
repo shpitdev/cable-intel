@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import { internalMutation, internalQuery } from "./_generated/server";
 
 const workflowItemStatusValidator = v.union(
@@ -57,6 +57,97 @@ const mergeUniqueStrings = (
   right: readonly string[]
 ): string[] => {
   return [...new Set([...left, ...right])];
+};
+
+const MODEL_LENGTH_TOKEN_REGEX =
+  /\b\d+(?:\.\d+)?\s*(?:ft|feet|m|meter|meters)\b/i;
+
+const normalizeToken = (value?: string): string => {
+  return value?.trim().toLowerCase() ?? "";
+};
+
+const hasLengthToken = (value: string): boolean => {
+  return MODEL_LENGTH_TOKEN_REGEX.test(value);
+};
+
+const pickPreferredModel = (current: string, incoming: string): string => {
+  const trimmedCurrent = current.trim();
+  const trimmedIncoming = incoming.trim();
+  if (!trimmedCurrent) {
+    return trimmedIncoming;
+  }
+  if (!trimmedIncoming) {
+    return trimmedCurrent;
+  }
+  if (trimmedCurrent === trimmedIncoming) {
+    return trimmedCurrent;
+  }
+
+  const currentHasLengthToken = hasLengthToken(trimmedCurrent);
+  const incomingHasLengthToken = hasLengthToken(trimmedIncoming);
+  if (currentHasLengthToken !== incomingHasLengthToken) {
+    return incomingHasLengthToken ? trimmedCurrent : trimmedIncoming;
+  }
+
+  return trimmedIncoming.length > trimmedCurrent.length
+    ? trimmedIncoming
+    : trimmedCurrent;
+};
+
+const isSkuPlaceholderVariant = (variant?: string, sku?: string): boolean => {
+  const normalizedVariant = normalizeToken(variant);
+  const normalizedSku = normalizeToken(sku);
+  return Boolean(
+    normalizedVariant && normalizedSku && normalizedVariant === normalizedSku
+  );
+};
+
+const pickPreferredVariant = (
+  currentVariant?: string,
+  incomingVariant?: string,
+  sku?: string
+): string | undefined => {
+  if (!currentVariant) {
+    return incomingVariant;
+  }
+  if (!incomingVariant) {
+    return currentVariant;
+  }
+  if (currentVariant === incomingVariant) {
+    return currentVariant;
+  }
+
+  const currentIsPlaceholder = isSkuPlaceholderVariant(currentVariant, sku);
+  const incomingIsPlaceholder = isSkuPlaceholderVariant(incomingVariant, sku);
+  if (currentIsPlaceholder !== incomingIsPlaceholder) {
+    return incomingIsPlaceholder ? currentVariant : incomingVariant;
+  }
+
+  return incomingVariant.length > currentVariant.length
+    ? incomingVariant
+    : currentVariant;
+};
+
+const hasSameConnectors = (
+  variant: Doc<"cableVariants">,
+  connectorFrom: string,
+  connectorTo: string
+): boolean => {
+  return (
+    variant.connectorFrom === connectorFrom &&
+    variant.connectorTo === connectorTo
+  );
+};
+
+const pickNewestVariant = (
+  variants: Doc<"cableVariants">[]
+): Doc<"cableVariants"> | undefined => {
+  return variants.sort((left, right) => {
+    if (left.updatedAt !== right.updatedAt) {
+      return right.updatedAt - left.updatedAt;
+    }
+    return right._creationTime - left._creationTime;
+  })[0];
 };
 
 export const createWorkflow = internalMutation({
@@ -199,21 +290,43 @@ export const upsertVariantAndInsertSpec = internalMutation({
   },
   handler: async (ctx, args) => {
     const parsedImageUrls = args.parsed.images.map((image) => image.url);
-    const matchingVariants = await ctx.db
+    const matchingVariantsBySku = args.parsed.sku
+      ? await ctx.db
+          .query("cableVariants")
+          .withIndex("by_brand_sku", (q) =>
+            q.eq("brand", args.parsed.brand).eq("sku", args.parsed.sku)
+          )
+          .collect()
+      : [];
+    const existingVariantBySku = pickNewestVariant(
+      matchingVariantsBySku.filter((variant) =>
+        hasSameConnectors(
+          variant,
+          args.parsed.connectorPair.from,
+          args.parsed.connectorPair.to
+        )
+      )
+    );
+
+    const matchingVariantsByModel = await ctx.db
       .query("cableVariants")
       .withIndex("by_brand_model", (q) =>
         q.eq("brand", args.parsed.brand).eq("model", args.parsed.model)
       )
       .collect();
 
-    const existingVariant = matchingVariants.find((variant) => {
+    const existingVariantByModel = matchingVariantsByModel.find((variant) => {
       return (
         areValuesEqual(variant.variant, args.parsed.variant) &&
         areValuesEqual(variant.sku, args.parsed.sku) &&
-        variant.connectorFrom === args.parsed.connectorPair.from &&
-        variant.connectorTo === args.parsed.connectorPair.to
+        hasSameConnectors(
+          variant,
+          args.parsed.connectorPair.from,
+          args.parsed.connectorPair.to
+        )
       );
     });
+    const existingVariant = existingVariantBySku ?? existingVariantByModel;
 
     let variantId = existingVariant?._id;
     if (existingVariant) {
@@ -221,7 +334,20 @@ export const upsertVariantAndInsertSpec = internalMutation({
         existingVariant.imageUrls,
         parsedImageUrls
       );
+      const nextModel = pickPreferredModel(
+        existingVariant.model,
+        args.parsed.model
+      );
+      const nextSku = existingVariant.sku ?? args.parsed.sku;
+      const nextVariant = pickPreferredVariant(
+        existingVariant.variant,
+        args.parsed.variant,
+        nextSku
+      );
       await ctx.db.patch(existingVariant._id, {
+        model: nextModel,
+        variant: nextVariant,
+        sku: nextSku,
         productUrl: existingVariant.productUrl ?? args.sourceUrl,
         imageUrls: nextImageUrls,
         updatedAt: args.now,

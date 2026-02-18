@@ -184,6 +184,9 @@ const normalizeToken = (value?: string): string => {
   return value?.trim().toLowerCase() ?? "";
 };
 
+const MODEL_LENGTH_TOKEN_REGEX =
+  /\b\d+(?:\.\d+)?\s*(?:ft|feet|m|meter|meters)\b/i;
+
 const canonicalizeUrlForGrouping = (value?: string): string => {
   if (!value) {
     return "";
@@ -216,6 +219,60 @@ const isDescriptiveModel = (value: string): boolean => {
 
 const hasSpecificVariantSignals = (row: TopCableRow): boolean => {
   return Boolean(row.sku?.trim() || row.variant?.trim());
+};
+
+const scoreTopCableRow = (row: TopCableRow): number => {
+  return scoreSpecCompleteness({
+    power: row.power,
+    data: row.data,
+    video: row.video,
+    evidenceRefs: row.evidenceRefs,
+  });
+};
+
+const getLatestSourceFetchTime = (row: TopCableRow): number => {
+  return row.sources.reduce((latest, source) => {
+    return Math.max(latest, source.fetchedAt);
+  }, 0);
+};
+
+const prefersLengthNeutralModel = (
+  candidateModel: string,
+  currentModel: string
+): boolean | undefined => {
+  const candidateHasLength = MODEL_LENGTH_TOKEN_REGEX.test(candidateModel);
+  const currentHasLength = MODEL_LENGTH_TOKEN_REGEX.test(currentModel);
+  if (candidateHasLength === currentHasLength) {
+    return undefined;
+  }
+  return !candidateHasLength;
+};
+
+const isPreferredSkuRow = (
+  candidate: TopCableRow,
+  current: TopCableRow
+): boolean => {
+  const candidateScore = scoreTopCableRow(candidate);
+  const currentScore = scoreTopCableRow(current);
+  if (candidateScore !== currentScore) {
+    return candidateScore > currentScore;
+  }
+
+  const prefersLengthNeutral = prefersLengthNeutralModel(
+    candidate.model,
+    current.model
+  );
+  if (typeof prefersLengthNeutral === "boolean") {
+    return prefersLengthNeutral;
+  }
+
+  const candidateLatestSource = getLatestSourceFetchTime(candidate);
+  const currentLatestSource = getLatestSourceFetchTime(current);
+  if (candidateLatestSource !== currentLatestSource) {
+    return candidateLatestSource > currentLatestSource;
+  }
+
+  return candidate.model.length > current.model.length;
 };
 
 const pruneLegacyCatalogRows = (rows: TopCableRow[]): TopCableRow[] => {
@@ -263,6 +320,30 @@ const pruneLegacyCatalogRows = (rows: TopCableRow[]): TopCableRow[] => {
   }
 
   return cleaned;
+};
+
+const dedupeRowsByBrandSku = (rows: TopCableRow[]): TopCableRow[] => {
+  const bestRowBySku = new Map<string, TopCableRow>();
+  for (const row of rows) {
+    const sku = normalizeToken(row.sku);
+    if (!sku) {
+      continue;
+    }
+    const key = `${normalizeToken(row.brand)}::${sku}`;
+    const current = bestRowBySku.get(key);
+    if (!current || isPreferredSkuRow(row, current)) {
+      bestRowBySku.set(key, row);
+    }
+  }
+
+  return rows.filter((row) => {
+    const sku = normalizeToken(row.sku);
+    if (!sku) {
+      return true;
+    }
+    const key = `${normalizeToken(row.brand)}::${sku}`;
+    return bestRowBySku.get(key) === row;
+  });
 };
 
 interface WorkflowReport {
@@ -556,6 +637,7 @@ export const getTopCables = query({
     const rankedSpecs = pickBestSpecsByVariant(specs, scanLimit);
     const hydratedRows = await hydrateTopCableRows(ctx, rankedSpecs);
     const cleanedRows = pruneLegacyCatalogRows(hydratedRows);
-    return cleanedRows.slice(0, limit);
+    const dedupedRows = dedupeRowsByBrandSku(cleanedRows);
+    return dedupedRows.slice(0, limit);
   },
 });

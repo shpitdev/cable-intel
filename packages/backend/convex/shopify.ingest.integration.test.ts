@@ -11,9 +11,12 @@ const EXPECT_TOTAL_ITEMS = 1;
 const EXPECT_COMPLETED_ITEMS = 1;
 const EXPECT_FAILED_ITEMS = 0;
 const TOP_CABLE_LIMIT = 20;
+const DEDUPE_TEST_TOP_CABLE_LIMIT = 80;
 const TARGET_PRODUCT_SLUG = "a82e2-240w-usb-c-to-usb-c-cable";
 const MIN_ANKER_ROWS = 4;
 const EXPECTED_SKU = "A82E2011";
+const OVERLAP_PRODUCT_SLUG_ONE = "a8662";
+const OVERLAP_PRODUCT_SLUG_TWO = "a8663";
 const TEST_TIMEOUT_MS = 180_000;
 
 const modules = (() => {
@@ -108,6 +111,48 @@ describe("shopify ingest integration", () => {
           process.env.FIRECRAWL_API_KEY = undefined;
         }
       }
+    },
+    TEST_TIMEOUT_MS
+  );
+
+  it(
+    "dedupes brand+sku rows across overlapping product URLs in top cables",
+    async () => {
+      const t = convexTest(schema, modules);
+
+      const ingestResult = await t.action(api.ingest.runSeedIngest, {
+        seedUrls: [
+          `https://www.anker.com/products/${OVERLAP_PRODUCT_SLUG_ONE}`,
+          `https://www.anker.com/products/${OVERLAP_PRODUCT_SLUG_TWO}`,
+        ],
+      });
+
+      expect(ingestResult.completedItems).toBe(2);
+      expect(ingestResult.failedItems).toBe(0);
+
+      const topCables = await t.query(api.ingestQueries.getTopCables, {
+        limit: DEDUPE_TEST_TOP_CABLE_LIMIT,
+      });
+      const overlapRows = topCables.filter((row) => {
+        return (
+          row.productUrl?.includes(OVERLAP_PRODUCT_SLUG_ONE) ||
+          row.productUrl?.includes(OVERLAP_PRODUCT_SLUG_TWO)
+        );
+      });
+
+      const skuCounts = new Map<string, number>();
+      for (const row of overlapRows) {
+        const sku = row.sku?.trim();
+        if (!sku) {
+          continue;
+        }
+        skuCounts.set(sku, (skuCounts.get(sku) ?? 0) + 1);
+      }
+
+      expect(skuCounts.size).toBeGreaterThan(0);
+      expect(
+        [...skuCounts.values()].every((count) => count === 1)
+      ).toBeTruthy();
     },
     TEST_TIMEOUT_MS
   );

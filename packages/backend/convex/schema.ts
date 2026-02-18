@@ -102,6 +102,7 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_brand_model", ["brand", "model"])
+    .index("by_brand_sku", ["brand", "sku"])
     .index("by_connector_pair", ["connectorFrom", "connectorTo"])
     .index("by_product_url", ["productUrl"]),
 
