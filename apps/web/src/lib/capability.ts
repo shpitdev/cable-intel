@@ -1,4 +1,4 @@
-import type { ConnectorType } from "$lib/types";
+import type { ConnectorType, DataCapability } from "$lib/types";
 
 const CONNECTOR_ALIASES: Record<string, ConnectorType> = {
   "USB-C": "USB-C",
@@ -15,6 +15,7 @@ const CONNECTOR_ALIASES: Record<string, ConnectorType> = {
   UNKNOWN: "Unknown",
 };
 const RESOLUTION_P_REGEX = /(\d{3,4})p/;
+const LIGHTNING_MAX_GBPS = 0.48;
 
 const clamp = (value: number, min: number, max: number): number => {
   return Math.min(max, Math.max(min, value));
@@ -74,6 +75,47 @@ export const inferMaxGbpsFromGeneration = (
     return 0.48;
   }
   return undefined;
+};
+
+export const getConnectorDataCeilingGbps = (
+  connectorFrom: ConnectorType,
+  connectorTo: ConnectorType
+): number | undefined => {
+  if (connectorFrom === "Lightning" || connectorTo === "Lightning") {
+    return LIGHTNING_MAX_GBPS;
+  }
+
+  return undefined;
+};
+
+export const clampDataCapabilityByConnector = (
+  data: DataCapability,
+  connectorFrom: ConnectorType,
+  connectorTo: ConnectorType
+): DataCapability => {
+  const connectorCeiling = getConnectorDataCeilingGbps(
+    connectorFrom,
+    connectorTo
+  );
+  if (typeof connectorCeiling !== "number") {
+    return data;
+  }
+
+  const normalizedMaxGbps =
+    typeof data.maxGbps === "number"
+      ? Math.min(data.maxGbps, connectorCeiling)
+      : connectorCeiling;
+  const normalizedUsbGeneration = data.usbGeneration
+    ?.toLowerCase()
+    .includes("usb 2")
+    ? data.usbGeneration
+    : "USB 2.0 (Lightning ceiling)";
+
+  return {
+    ...data,
+    maxGbps: normalizedMaxGbps,
+    usbGeneration: normalizedUsbGeneration,
+  };
 };
 
 export const resolutionRank = (resolution?: string): number | undefined => {

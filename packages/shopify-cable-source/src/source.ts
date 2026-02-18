@@ -127,6 +127,8 @@ const VIDEO_POSITIVE_REGEX =
   /screen\s+mirroring|display\s+support|video\s+output|supports\s+video/i;
 const RESOLUTION_REGEX = /(8K|5K|4K|2K|1080p)/i;
 const REFRESH_RATE_REGEX = /(\d{2,3})\s*Hz\b/i;
+const LIGHTNING_MAX_GBPS = 0.48 as const;
+const LIGHTNING_USB_GENERATION = "USB 2.0 (Lightning ceiling)" as const;
 
 const stripTags = (value: string): string => {
   return value.replace(/<[^>]+>/g, " ");
@@ -408,12 +410,17 @@ const getPowerCapability = (text: string) => {
   };
 };
 
-const getDataCapability = (text: string) => {
+const getDataCapability = (
+  text: string,
+  connectorPair: { from: string; to: string }
+) => {
+  const isLightningCable =
+    connectorPair.from === "Lightning" || connectorPair.to === "Lightning";
   const speeds = [...text.matchAll(DATA_RATE_REGEX)]
     .map((match) => Number(match[1]))
     .filter((value) => Number.isFinite(value) && value > 0);
 
-  const thunderbolt = text.match(THUNDERBOLT_REGEX);
+  const thunderbolt = isLightningCable ? null : text.match(THUNDERBOLT_REGEX);
   const usbGenerationMatch = text.match(USB_GENERATION_REGEX);
 
   let usbGeneration: string | undefined;
@@ -423,8 +430,25 @@ const getDataCapability = (text: string) => {
     usbGeneration = `USB ${usbGenerationMatch[1]}`;
   }
 
+  let maxGbps: number | undefined;
+  if (speeds.length > 0) {
+    maxGbps = Math.max(...speeds);
+  } else if (isLightningCable) {
+    maxGbps = LIGHTNING_MAX_GBPS;
+  }
+
+  if (isLightningCable) {
+    return {
+      maxGbps:
+        typeof maxGbps === "number"
+          ? Math.min(maxGbps, LIGHTNING_MAX_GBPS)
+          : LIGHTNING_MAX_GBPS,
+      usbGeneration: LIGHTNING_USB_GENERATION,
+    };
+  }
+
   return {
-    maxGbps: speeds.length > 0 ? Math.max(...speeds) : undefined,
+    maxGbps,
     usbGeneration,
   };
 };
@@ -547,7 +571,7 @@ const buildProductExtractionContext = (
   const keyFeatures = getKeyFeatureText(product);
   const contextText = [model, description, ...keyFeatures].join("\n");
   const connectorPair = parseConnectorPair(model, contextText);
-  const data = getDataCapability(contextText);
+  const data = getDataCapability(contextText, connectorPair);
   const power = getPowerCapability(contextText);
   const variants = Array.isArray(product.variants)
     ? product.variants

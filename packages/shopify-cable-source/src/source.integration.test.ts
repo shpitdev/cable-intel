@@ -3,6 +3,8 @@ import { createShopifyCableSource } from "./source";
 import { shopifyCableTemplates } from "./templates";
 
 const ANKER_TEMPLATE_ID = "anker-us";
+const LIGHTNING_MAX_GBPS = 0.48 as const;
+const LIGHTNING_USB_GENERATION_FRAGMENT = "USB 2.0" as const;
 const ankerTemplate = shopifyCableTemplates.find((template) => {
   return template.id === ANKER_TEMPLATE_ID;
 });
@@ -73,5 +75,29 @@ describe("shopify cable source integration", () => {
     expect(skus.size).toBeGreaterThan(4);
     expect(skus.has("A82E2011")).toBe(true);
     expect(has240w).toBe(true);
+  }, 120_000);
+
+  it("does not classify Lightning cables as Thunderbolt/USB4 class", async () => {
+    const source = createShopifyCableSource(ankerTemplate);
+    const result = await source.extractFromProductUrl(
+      "https://www.anker.com/products/a8633"
+    );
+
+    expect(result).not.toBeNull();
+    if (!result) {
+      return;
+    }
+
+    expect(result.cables.length).toBeGreaterThan(0);
+    for (const cable of result.cables) {
+      expect(
+        cable.connectorPair.from === "Lightning" ||
+          cable.connectorPair.to === "Lightning"
+      ).toBe(true);
+      expect(cable.data.maxGbps).toBeLessThanOrEqual(LIGHTNING_MAX_GBPS);
+      expect(cable.data.usbGeneration).toContain(
+        LIGHTNING_USB_GENERATION_FRAGMENT
+      );
+    }
   }, 120_000);
 });

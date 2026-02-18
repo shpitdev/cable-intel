@@ -37,6 +37,13 @@ const getAdapterColor = (
 const getVelcroColor = (
   profile: CableProfile
 ): LabelRecommendation["velcroColor"] => {
+  if (
+    profile.connectorFrom === "Lightning" ||
+    profile.connectorTo === "Lightning"
+  ) {
+    return "Black";
+  }
+
   const inferredGbps =
     profile.data.maxGbps ??
     inferMaxGbpsFromGeneration(profile.data.usbGeneration);
@@ -70,7 +77,12 @@ export const recommendLabels = (profile: CableProfile): LabelRecommendation => {
     );
   }
 
-  if (velcroColor === "Orange") {
+  if (
+    profile.connectorFrom === "Lightning" ||
+    profile.connectorTo === "Lightning"
+  ) {
+    reasons.push("Lightning connector paths are capped at USB 2.0 speeds.");
+  } else if (velcroColor === "Orange") {
     reasons.push("Data capability signals USB4/Thunderbolt or 40Gbps+.");
   } else if (velcroColor === "Blue") {
     reasons.push("Data capability signals high-speed 10Gbps-20Gbps class.");

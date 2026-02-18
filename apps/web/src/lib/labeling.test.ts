@@ -68,4 +68,17 @@ describe("recommendLabels", () => {
 
     expect(result.velcroColor).toBe("Black");
   });
+
+  it("keeps Lightning cables in Black velcro even when source text is noisy", () => {
+    const result = recommendLabels({
+      ...baseProfile,
+      connectorTo: "Lightning",
+      data: { usbGeneration: "Thunderbolt 3", maxGbps: 40 },
+    });
+
+    expect(result.velcroColor).toBe("Black");
+    expect(result.reasons.some((reason) => reason.includes("Lightning"))).toBe(
+      true
+    );
+  });
 });

@@ -70,6 +70,29 @@ describe("mapCatalogRowToProfile", () => {
     expect(profile.displayName).toContain("USB-A to USB-C Cable");
     expect(profile.displayName).not.toBe("A82G2");
   });
+
+  it("clamps Lightning connector pairs to USB 2.0 data class", () => {
+    const row: CatalogCableRow = {
+      variantId: "variant_lightning",
+      brand: "Anker",
+      model: "A8633",
+      variant: "6 ft",
+      sku: "A8633011",
+      connectorFrom: "USB-C",
+      connectorTo: "Lightning",
+      productUrl: "https://www.anker.com/products/a8633",
+      imageUrls: [],
+      evidenceRefs: [],
+      power: { maxWatts: 87 },
+      data: { usbGeneration: "Thunderbolt 3", maxGbps: 40 },
+      video: {},
+    };
+
+    const profile = mapCatalogRowToProfile(row);
+
+    expect(profile.data.maxGbps).toBe(0.48);
+    expect(profile.data.usbGeneration).toContain("USB 2.0");
+  });
 });
 
 describe("buildProfileFromMarkings", () => {
