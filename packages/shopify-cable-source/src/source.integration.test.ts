@@ -5,6 +5,7 @@ import { shopifyCableTemplates } from "./templates";
 const ANKER_TEMPLATE_ID = "anker-us";
 const LIGHTNING_MAX_GBPS = 0.48 as const;
 const LIGHTNING_USB_GENERATION_FRAGMENT = "USB 2.0" as const;
+const EXPECTED_BRAND = "Anker";
 const ankerTemplate = shopifyCableTemplates.find((template) => {
   return template.id === ANKER_TEMPLATE_ID;
 });
@@ -98,6 +99,80 @@ describe("shopify cable source integration", () => {
       expect(cable.data.usbGeneration).toContain(
         LIGHTNING_USB_GENERATION_FRAGMENT
       );
+    }
+  }, 120_000);
+
+  it("normalizes beta-like vendor aliases to the canonical template brand", async () => {
+    const source = createShopifyCableSource(ankerTemplate);
+    const result = await source.extractFromProductUrl(
+      "https://www.anker.com/products/a84n1"
+    );
+
+    expect(result).not.toBeNull();
+    if (!result) {
+      return;
+    }
+
+    expect(result.cables.length).toBeGreaterThan(0);
+    for (const cable of result.cables) {
+      expect(cable.brand).toBe(EXPECTED_BRAND);
+    }
+  }, 120_000);
+
+  it("prefers explicit per-variant wattage labels over page-level defaults", async () => {
+    const source = createShopifyCableSource(ankerTemplate);
+    const result = await source.extractFromProductUrl(
+      "https://www.anker.com/products/a8552"
+    );
+
+    expect(result).not.toBeNull();
+    if (!result) {
+      return;
+    }
+
+    const variantsWith240Label = result.cables.filter((cable) => {
+      return cable.variant?.toLowerCase().includes("240w");
+    });
+    expect(variantsWith240Label.length).toBeGreaterThan(0);
+    for (const cable of variantsWith240Label) {
+      expect(cable.power.maxWatts).toBe(240);
+    }
+  }, 120_000);
+
+  it("falls back to SKU when a single Shopify variant is 'Default Title'", async () => {
+    const source = createShopifyCableSource(ankerTemplate);
+    const result = await source.extractFromProductUrl(
+      "https://www.anker.com/products/b81a2"
+    );
+
+    expect(result).not.toBeNull();
+    if (!result) {
+      return;
+    }
+
+    expect(result.cables.length).toBeGreaterThan(0);
+    for (const cable of result.cables) {
+      expect(cable.sku?.length ?? 0).toBeGreaterThan(0);
+      expect(cable.variant).toBe(cable.sku);
+    }
+  }, 120_000);
+
+  it("does not emit optional evidence refs without snippets", async () => {
+    const source = createShopifyCableSource(ankerTemplate);
+    const result = await source.extractFromProductUrl(
+      "https://www.anker.com/products/a8662"
+    );
+
+    expect(result).not.toBeNull();
+    if (!result) {
+      return;
+    }
+
+    expect(result.cables.length).toBeGreaterThan(0);
+    for (const cable of result.cables) {
+      for (const evidence of cable.evidence) {
+        expect(evidence.snippet?.trim().length ?? 0).toBeGreaterThan(0);
+      }
     }
   }, 120_000);
 });

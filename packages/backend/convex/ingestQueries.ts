@@ -184,6 +184,22 @@ const normalizeToken = (value?: string): string => {
   return value?.trim().toLowerCase() ?? "";
 };
 
+const canonicalizeUrlForGrouping = (value?: string): string => {
+  if (!value) {
+    return "";
+  }
+  try {
+    const parsed = new URL(value);
+    const pathname =
+      parsed.pathname.endsWith("/") && parsed.pathname !== "/"
+        ? parsed.pathname.slice(0, -1)
+        : parsed.pathname;
+    return `${parsed.hostname.toLowerCase()}${pathname.toLowerCase()}`;
+  } catch {
+    return normalizeToken(value);
+  }
+};
+
 const isDescriptiveModel = (value: string): boolean => {
   const trimmed = value.trim();
   if (!trimmed) {
@@ -310,6 +326,124 @@ interface WorkflowReport {
   };
 }
 
+interface WorkflowSpecCandidate {
+  evidenceSources: WorkflowReport["cables"][number]["evidenceSources"];
+  spec: Doc<"normalizedSpecs">;
+  variant: Doc<"cableVariants">;
+}
+
+const buildWorkflowSpecIndex = async (
+  ctx: QueryCtx,
+  workflowRunId: Id<"ingestionWorkflows">
+): Promise<{
+  candidatesBySpecId: Map<Id<"normalizedSpecs">, WorkflowSpecCandidate>;
+  specsByCanonicalUrl: Map<string, WorkflowSpecCandidate[]>;
+}> => {
+  const normalizedSpecs = await ctx.db
+    .query("normalizedSpecs")
+    .withIndex("by_workflow", (q) => q.eq("workflowRunId", workflowRunId))
+    .collect();
+  const sourceById = new Map<Id<"evidenceSources">, Doc<"evidenceSources">>();
+  const variantsById = new Map<Id<"cableVariants">, Doc<"cableVariants">>();
+  const candidatesBySpecId = new Map<
+    Id<"normalizedSpecs">,
+    WorkflowSpecCandidate
+  >();
+  const specsByCanonicalUrl = new Map<string, WorkflowSpecCandidate[]>();
+
+  for (const spec of normalizedSpecs) {
+    const existingVariant = variantsById.get(spec.variantId);
+    const variant = existingVariant ?? (await ctx.db.get(spec.variantId));
+    if (!variant) {
+      continue;
+    }
+    variantsById.set(variant._id, variant);
+
+    const evidenceSources: WorkflowReport["cables"][number]["evidenceSources"] =
+      [];
+    const groupingKeys = new Set<string>();
+    groupingKeys.add(canonicalizeUrlForGrouping(variant.productUrl));
+
+    for (const sourceId of spec.evidenceSourceIds) {
+      const existingSource = sourceById.get(sourceId);
+      const source = existingSource ?? (await ctx.db.get(sourceId));
+      if (!source) {
+        continue;
+      }
+      sourceById.set(source._id, source);
+      evidenceSources.push({
+        sourceId: source._id,
+        url: source.url,
+        canonicalUrl: source.canonicalUrl,
+        fetchedAt: source.fetchedAt,
+        contentHash: source.contentHash,
+      });
+      groupingKeys.add(canonicalizeUrlForGrouping(source.canonicalUrl));
+      groupingKeys.add(canonicalizeUrlForGrouping(source.url));
+    }
+
+    const candidate = {
+      spec,
+      variant,
+      evidenceSources,
+    };
+    candidatesBySpecId.set(spec._id, candidate);
+    for (const groupingKey of groupingKeys) {
+      if (!groupingKey) {
+        continue;
+      }
+      const existing = specsByCanonicalUrl.get(groupingKey);
+      if (existing) {
+        existing.push(candidate);
+      } else {
+        specsByCanonicalUrl.set(groupingKey, [candidate]);
+      }
+    }
+  }
+
+  return {
+    candidatesBySpecId,
+    specsByCanonicalUrl,
+  };
+};
+
+const collectCandidatesForWorkflowItem = (
+  item: Doc<"ingestionWorkflowItems">,
+  specsByCanonicalUrl: Map<string, WorkflowSpecCandidate[]>,
+  candidatesBySpecId: Map<Id<"normalizedSpecs">, WorkflowSpecCandidate>
+): WorkflowSpecCandidate[] => {
+  const itemKeys = [
+    canonicalizeUrlForGrouping(item.canonicalUrl),
+    canonicalizeUrlForGrouping(item.url),
+  ].filter(Boolean);
+  const candidates = new Map<Id<"normalizedSpecs">, WorkflowSpecCandidate>();
+  for (const itemKey of itemKeys) {
+    const matches = specsByCanonicalUrl.get(itemKey) ?? [];
+    for (const match of matches) {
+      candidates.set(match.spec._id, match);
+    }
+  }
+
+  if (candidates.size === 0 && item.normalizedSpecId) {
+    const fallback = candidatesBySpecId.get(item.normalizedSpecId);
+    if (fallback) {
+      candidates.set(fallback.spec._id, fallback);
+    }
+  }
+
+  return [...candidates.values()].sort((left, right) => {
+    const leftVariantKey =
+      normalizeToken(left.variant.variant) ||
+      normalizeToken(left.variant.sku) ||
+      normalizeToken(left.variant.model);
+    const rightVariantKey =
+      normalizeToken(right.variant.variant) ||
+      normalizeToken(right.variant.sku) ||
+      normalizeToken(right.variant.model);
+    return leftVariantKey.localeCompare(rightVariantKey);
+  });
+};
+
 const buildWorkflowReport = async (
   ctx: QueryCtx,
   workflowRunId: Id<"ingestionWorkflows">,
@@ -333,54 +467,36 @@ const buildWorkflowReport = async (
     )
     .collect();
 
+  const { specsByCanonicalUrl, candidatesBySpecId } =
+    await buildWorkflowSpecIndex(ctx, workflowRunId);
+
   const cableRows: WorkflowReport["cables"] = [];
   for (const item of completedItems.slice(0, limit)) {
-    if (!item.normalizedSpecId) {
-      continue;
+    const matches = collectCandidatesForWorkflowItem(
+      item,
+      specsByCanonicalUrl,
+      candidatesBySpecId
+    );
+    for (const match of matches) {
+      cableRows.push({
+        workflowItemId: item._id,
+        sourceUrl: item.url,
+        canonicalUrl: item.canonicalUrl,
+        brand: match.variant.brand,
+        model: match.variant.model,
+        variant: match.variant.variant,
+        sku: match.variant.sku,
+        connectorFrom: match.variant.connectorFrom,
+        connectorTo: match.variant.connectorTo,
+        productUrl: match.variant.productUrl,
+        imageUrls: match.variant.imageUrls,
+        power: match.spec.power,
+        data: match.spec.data,
+        video: match.spec.video,
+        evidenceRefs: match.spec.evidenceRefs,
+        evidenceSources: match.evidenceSources,
+      });
     }
-
-    const normalizedSpec = await ctx.db.get(item.normalizedSpecId);
-    if (!normalizedSpec) {
-      continue;
-    }
-    const variant = await ctx.db.get(normalizedSpec.variantId);
-    if (!variant) {
-      continue;
-    }
-
-    const evidenceSources: WorkflowReport["cables"][number]["evidenceSources"] =
-      [];
-    for (const sourceId of normalizedSpec.evidenceSourceIds) {
-      const source = await ctx.db.get(sourceId);
-      if (source) {
-        evidenceSources.push({
-          sourceId: source._id,
-          url: source.url,
-          canonicalUrl: source.canonicalUrl,
-          fetchedAt: source.fetchedAt,
-          contentHash: source.contentHash,
-        });
-      }
-    }
-
-    cableRows.push({
-      workflowItemId: item._id,
-      sourceUrl: item.url,
-      canonicalUrl: item.canonicalUrl,
-      brand: variant.brand,
-      model: variant.model,
-      variant: variant.variant,
-      sku: variant.sku,
-      connectorFrom: variant.connectorFrom,
-      connectorTo: variant.connectorTo,
-      productUrl: variant.productUrl,
-      imageUrls: variant.imageUrls,
-      power: normalizedSpec.power,
-      data: normalizedSpec.data,
-      video: normalizedSpec.video,
-      evidenceRefs: normalizedSpec.evidenceRefs,
-      evidenceSources,
-    });
   }
 
   return {

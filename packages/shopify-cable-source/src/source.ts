@@ -145,6 +145,40 @@ const cleanText = (value: string | undefined): string => {
   return normalizeWhitespace(stripTags(value));
 };
 
+const slugify = (value: string): string => {
+  return value
+    .toLowerCase()
+    .replaceAll(/[^a-z0-9]+/g, "-")
+    .replaceAll(/^-+|-+$/g, "");
+};
+
+const normalizeBrand = (vendor: string, fallbackBrand: string): string => {
+  const cleanedVendor = cleanText(vendor);
+  const cleanedFallback = cleanText(fallbackBrand);
+  if (!cleanedFallback) {
+    return cleanedVendor;
+  }
+  if (!cleanedVendor) {
+    return cleanedFallback;
+  }
+
+  const vendorSlug = slugify(cleanedVendor);
+  const fallbackSlug = slugify(cleanedFallback);
+  if (!vendorSlug) {
+    return cleanedFallback;
+  }
+
+  if (
+    vendorSlug === fallbackSlug ||
+    vendorSlug.includes(fallbackSlug) ||
+    vendorSlug.startsWith("beta-")
+  ) {
+    return cleanedFallback;
+  }
+
+  return cleanedVendor;
+};
+
 const escapeHtml = (value: string): string => {
   return value
     .replaceAll("&", "&amp;")
@@ -551,13 +585,41 @@ const getVariantLabel = (
   variantCount: number
 ): string | undefined => {
   const label = cleanText(variant.name);
+  const sku = cleanText(variant.sku);
   if (!label) {
-    return undefined;
+    return variantCount === 1 ? sku || undefined : undefined;
   }
   if (variantCount === 1 && label.toLowerCase() === "default title") {
+    return sku || undefined;
+  }
+  if (label.toLowerCase() === "default title") {
     return undefined;
   }
   return label;
+};
+
+const extractMaxWatts = (text: string): number | undefined => {
+  const watts = [...text.matchAll(POWER_REGEX)]
+    .map((match) => Number(match[1]))
+    .filter((value) => Number.isFinite(value) && value > 0 && value <= 500);
+  if (watts.length === 0) {
+    return undefined;
+  }
+  return Math.max(...watts);
+};
+
+const getVariantPowerCapability = (
+  basePower: ProductExtractionContext["power"],
+  variantLabel?: string
+): ProductExtractionContext["power"] => {
+  const variantWatts = extractMaxWatts(variantLabel ?? "");
+  if (typeof variantWatts !== "number") {
+    return basePower;
+  }
+  return {
+    ...basePower,
+    maxWatts: variantWatts,
+  };
 };
 
 const buildProductExtractionContext = (
@@ -566,7 +628,7 @@ const buildProductExtractionContext = (
   product: ShopifyProduct
 ): ProductExtractionContext => {
   const model = cleanText(product.title ?? product.name);
-  const brand = cleanText(product.vendor) || cleanText(template.name);
+  const brand = normalizeBrand(product.vendor ?? "", template.name);
   const description = cleanText(product.description);
   const keyFeatures = getKeyFeatureText(product);
   const contextText = [model, description, ...keyFeatures].join("\n");
@@ -612,8 +674,14 @@ const buildProductExtractionContext = (
 };
 
 const buildEvidence = (
-  context: ProductExtractionContext
+  context: ProductExtractionContext,
+  options?: {
+    power?: ProductExtractionContext["power"];
+    variantLabel?: string;
+  }
 ): ShopifyEvidencePointer[] => {
+  const effectivePower = options?.power ?? context.power;
+  const variantLabel = options?.variantLabel;
   const evidence: ShopifyEvidencePointer[] = [
     {
       fieldPath: "brand",
@@ -637,35 +705,48 @@ const buildEvidence = (
     },
   ];
 
-  if (typeof context.power.maxWatts === "number") {
-    evidence.push({
-      fieldPath: "power.maxWatts",
-      snippet:
-        getSnippet(context.sourceText, `${context.power.maxWatts}W`) ??
-        getSnippet(context.sourceText, POWER_REGEX),
-      sourceUrl: context.canonicalUrl,
-    });
+  if (typeof effectivePower.maxWatts === "number") {
+    const powerSnippet =
+      getSnippet(
+        `${context.model} ${variantLabel ?? ""}`,
+        `${effectivePower.maxWatts}W`
+      ) ??
+      getSnippet(context.sourceText, `${effectivePower.maxWatts}W`) ??
+      getSnippet(context.sourceText, POWER_REGEX);
+    if (powerSnippet) {
+      evidence.push({
+        fieldPath: "power.maxWatts",
+        snippet: powerSnippet,
+        sourceUrl: context.canonicalUrl,
+      });
+    }
   }
 
   if (typeof context.data.maxGbps === "number") {
-    evidence.push({
-      fieldPath: "data.maxGbps",
-      snippet:
-        getSnippet(context.sourceText, `${context.data.maxGbps}Gbps`) ??
-        getSnippet(context.sourceText, DATA_RATE_REGEX),
-      sourceUrl: context.canonicalUrl,
-    });
+    const dataSnippet =
+      getSnippet(context.sourceText, `${context.data.maxGbps}Gbps`) ??
+      getSnippet(context.sourceText, DATA_RATE_REGEX);
+    if (dataSnippet) {
+      evidence.push({
+        fieldPath: "data.maxGbps",
+        snippet: dataSnippet,
+        sourceUrl: context.canonicalUrl,
+      });
+    }
   }
 
   if (typeof context.video.explicitlySupported === "boolean") {
     const matcher = context.video.explicitlySupported
       ? VIDEO_POSITIVE_REGEX
       : VIDEO_NEGATIVE_REGEX;
-    evidence.push({
-      fieldPath: "video.explicitlySupported",
-      snippet: getSnippet(context.sourceText, matcher),
-      sourceUrl: context.canonicalUrl,
-    });
+    const videoSnippet = getSnippet(context.sourceText, matcher);
+    if (videoSnippet) {
+      evidence.push({
+        fieldPath: "video.explicitlySupported",
+        snippet: videoSnippet,
+        sourceUrl: context.canonicalUrl,
+      });
+    }
   }
 
   return evidence;
@@ -674,10 +755,13 @@ const buildEvidence = (
 const buildCableSpecs = (
   context: ProductExtractionContext
 ): ShopifyExtractedCableSpec[] => {
-  const sharedEvidence = buildEvidence(context);
-
   return context.variants.map((variant) => {
     const variantLabel = getVariantLabel(variant, context.variants.length);
+    const power = getVariantPowerCapability(context.power, variantLabel);
+    const evidence = buildEvidence(context, {
+      power,
+      variantLabel,
+    });
     const variantImageUrl = cleanText(variant.image?.url);
     const images = dedupeUrls([
       ...(variantImageUrl ? [variantImageUrl] : []),
@@ -691,10 +775,10 @@ const buildCableSpecs = (
         to: context.connectorPair.to,
       },
       data: context.data,
-      evidence: sharedEvidence,
+      evidence,
       images,
       model: context.model,
-      power: context.power,
+      power,
       sku: cleanText(variant.sku) || undefined,
       variant: variantLabel,
       video: context.video,
