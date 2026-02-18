@@ -184,6 +184,20 @@ const normalizeToken = (value?: string): string => {
   return value?.trim().toLowerCase() ?? "";
 };
 
+const REGION_SUFFIX_REGEX = /-(us|uk|eu|ca|au|jp)$/;
+
+const normalizeBrandToken = (brand?: string): string => {
+  const token = normalizeToken(brand);
+  if (!token) {
+    return "";
+  }
+
+  const withoutBetaPrefix = token.startsWith("beta-")
+    ? token.slice("beta-".length)
+    : token;
+  return withoutBetaPrefix.replace(REGION_SUFFIX_REGEX, "");
+};
+
 const MODEL_LENGTH_TOKEN_REGEX =
   /\b\d+(?:\.\d+)?\s*(?:ft|feet|m|meter|meters)\b/i;
 
@@ -281,7 +295,7 @@ const pruneLegacyCatalogRows = (rows: TopCableRow[]): TopCableRow[] => {
     const groupingKey =
       normalizeToken(row.productUrl) ||
       [
-        normalizeToken(row.brand),
+        normalizeBrandToken(row.brand),
         normalizeToken(row.connectorFrom),
         normalizeToken(row.connectorTo),
       ].join("::");
@@ -329,7 +343,7 @@ const dedupeRowsByBrandSku = (rows: TopCableRow[]): TopCableRow[] => {
     if (!sku) {
       continue;
     }
-    const key = `${normalizeToken(row.brand)}::${sku}`;
+    const key = `${normalizeBrandToken(row.brand)}::${sku}`;
     const current = bestRowBySku.get(key);
     if (!current || isPreferredSkuRow(row, current)) {
       bestRowBySku.set(key, row);
@@ -341,7 +355,7 @@ const dedupeRowsByBrandSku = (rows: TopCableRow[]): TopCableRow[] => {
     if (!sku) {
       return true;
     }
-    const key = `${normalizeToken(row.brand)}::${sku}`;
+    const key = `${normalizeBrandToken(row.brand)}::${sku}`;
     return bestRowBySku.get(key) === row;
   });
 };
