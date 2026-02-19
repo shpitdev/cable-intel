@@ -160,7 +160,9 @@ const CONNECTOR_PAIR_REGEX =
 const THUNDERBOLT_WORD_REGEX = /thunderbolt/i;
 const CABLE_WORD_REGEX = /cable/i;
 const POWER_REGEX = /(\d{1,3}(?:\.\d+)?)\s*W\b/gi;
+const POWER_HINT_REGEX = /(\d{1,3}(?:\.\d+)?)\s*W\b/i;
 const DATA_RATE_REGEX = /(\d{1,3}(?:\.\d+)?)\s*Gbps\b/gi;
+const DATA_RATE_HINT_REGEX = /(\d{1,3}(?:\.\d+)?)\s*Gbps\b/i;
 const THUNDERBOLT_REGEX = /Thunderbolt\s*(\d+)/i;
 const USB_GENERATION_REGEX = /USB\s*(\d(?:\.\d)?)/i;
 const PD_REGEX = /\bPD\b|Power Delivery/i;
@@ -285,6 +287,16 @@ const escapeHtml = (value: string): string => {
 
 const toSafeHtmlParagraph = (value: string): string => {
   return `<p>${escapeHtml(value)}</p>`;
+};
+
+const hasCapabilitySignals = (text: string): boolean => {
+  return (
+    POWER_HINT_REGEX.test(text) ||
+    DATA_RATE_HINT_REGEX.test(text) ||
+    PD_REGEX.test(text) ||
+    VIDEO_POSITIVE_REGEX.test(text) ||
+    VIDEO_NEGATIVE_REGEX.test(text)
+  );
 };
 
 const dedupeUrls = (urls: readonly string[]): string[] => {
@@ -1057,6 +1069,8 @@ export const createShopifyCableSource = (
   template: ShopifyCableSourceTemplate
 ): ShopifyCableSource => {
   let cachedBuildId: string | undefined;
+  let loadedSearchCatalogForTemplateQuery = false;
+  let suggestEndpointUnsupported = false;
   const suggestProductByHandle = new Map<
     string,
     {
@@ -1197,10 +1211,15 @@ export const createShopifyCableSource = (
       url: string;
     }>
   > => {
+    if (suggestEndpointUnsupported) {
+      return [];
+    }
+
     try {
       return await fetchSearchSuggestProducts(query);
     } catch (error) {
       if (error instanceof HttpError && error.status === 404) {
+        suggestEndpointUnsupported = true;
         return [];
       }
       throw error;
@@ -1213,6 +1232,7 @@ export const createShopifyCableSource = (
     const products = await tryFetchSearchSuggestProducts(
       template.searchQueryValue
     );
+    loadedSearchCatalogForTemplateQuery = true;
 
     return products
       .map((product) => ({
@@ -1223,33 +1243,77 @@ export const createShopifyCableSource = (
       .filter((product) => product.handle && product.title);
   };
 
+  const shouldSkipSupplementalLookup = (product: ShopifyProduct): boolean => {
+    const baseDescription = combineUniqueText(
+      product.description,
+      product.descriptionHtml
+    );
+    return (
+      baseDescription.length >= 140 && hasCapabilitySignals(baseDescription)
+    );
+  };
+
+  const getSuggestDescriptionFromCache = (normalizedHandle: string): string => {
+    const cached = suggestProductByHandle.get(normalizedHandle);
+    return cached ? combineUniqueText(cached.title, cached.body) : "";
+  };
+
+  const getSuggestDescriptionFromProducts = (
+    products: Array<{
+      body: string;
+      handle: string;
+      title: string;
+      url: string;
+    }>,
+    normalizedHandle: string
+  ): string => {
+    for (const item of products) {
+      if (item.handle.toLowerCase() === normalizedHandle) {
+        return combineUniqueText(item.title, item.body);
+      }
+    }
+    return "";
+  };
+
   const getSearchSuggestSupplementalDescription = async (
-    handle: string
+    handle: string,
+    product: ShopifyProduct
   ): Promise<string> => {
+    if (suggestEndpointUnsupported) {
+      return "";
+    }
+
     const normalizedHandle = cleanText(handle).toLowerCase();
     if (!normalizedHandle) {
       return "";
     }
+    if (shouldSkipSupplementalLookup(product)) {
+      return "";
+    }
 
-    const cached = suggestProductByHandle.get(normalizedHandle);
-    if (cached) {
-      return combineUniqueText(cached.title, cached.body);
+    const cachedDescription = getSuggestDescriptionFromCache(normalizedHandle);
+    if (cachedDescription) {
+      return cachedDescription;
     }
 
     const byHandleResults = await tryFetchSearchSuggestProducts(handle);
-    for (const product of byHandleResults) {
-      if (product.handle.toLowerCase() === normalizedHandle) {
-        return combineUniqueText(product.title, product.body);
-      }
+    const byHandleDescription = getSuggestDescriptionFromProducts(
+      byHandleResults,
+      normalizedHandle
+    );
+    if (byHandleDescription) {
+      return byHandleDescription;
     }
 
-    const fallbackResults = await tryFetchSearchSuggestProducts(
-      template.searchQueryValue
-    );
-    for (const product of fallbackResults) {
-      if (product.handle.toLowerCase() === normalizedHandle) {
-        return combineUniqueText(product.title, product.body);
-      }
+    if (!loadedSearchCatalogForTemplateQuery) {
+      loadedSearchCatalogForTemplateQuery = true;
+      const fallbackResults = await tryFetchSearchSuggestProducts(
+        template.searchQueryValue
+      );
+      return getSuggestDescriptionFromProducts(
+        fallbackResults,
+        normalizedHandle
+      );
     }
 
     return "";
@@ -1401,7 +1465,7 @@ export const createShopifyCableSource = (
     }
 
     const supplementalDescription =
-      await getSearchSuggestSupplementalDescription(handle);
+      await getSearchSuggestSupplementalDescription(handle, product);
 
     return buildExtractionResultFromProduct(
       template,
