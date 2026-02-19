@@ -48,3 +48,8 @@ coverage
 .cache
 tmp
 temp
+
+#
+artifacts/
+test-results/
+scripts/audit/
