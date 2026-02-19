@@ -18,6 +18,15 @@ import {
   extractionOutputSchema,
   parseExtractionOutput,
 } from "./contracts/extraction";
+import {
+  applyShopifyJsonLlmEnrichment,
+  applyShopifyJsonPowerSignals,
+  buildShopifyJsonEnrichmentInput,
+  deriveDeterministicPowerSignals,
+  formatShopifyJsonInputForPrompt,
+  shopifyJsonLlmEnrichmentSchema,
+  shouldAttemptShopifyJsonEnrichment,
+} from "./shopifyJsonEnrichment";
 
 const MAX_MARKDOWN_CHARS = 120_000;
 const FIRECRAWL_SCRAPE_URL = "https://api.firecrawl.dev/v1/scrape";
@@ -199,6 +208,14 @@ const EXTRACTION_SYSTEM_PROMPT = [
   "Always return evidence entries for brand, model, connectorPair.from, and connectorPair.to.",
 ].join(" ");
 
+const SHOPIFY_JSON_ENRICHMENT_SYSTEM_PROMPT = [
+  "You enrich ambiguous cable attributes from cleaned Shopify product JSON.",
+  "Treat brand/model/sku/images as authoritative and immutable.",
+  "Only emit fields that are explicitly supported by the provided JSON text.",
+  "If watts are not explicitly stated (for example '100W'), omit power.maxWatts.",
+  "Do not infer missing values from assumptions.",
+].join(" ");
+
 const buildExtractionPrompt = (
   snapshot: ScrapedSnapshot,
   contentHash: string
@@ -289,6 +306,164 @@ const parseShopifyExtractedCable = (
       }
       return { url: image.url };
     }),
+  });
+};
+
+const buildShopifyJsonEnrichmentPrompt = (
+  canonicalUrl: string,
+  input: string
+): string => {
+  return [
+    `Canonical URL: ${canonicalUrl}`,
+    "",
+    "Use only this JSON payload as evidence for enrichment.",
+    "Return only fields that are explicitly supported by the payload.",
+    "",
+    "<shopify_json>",
+    input,
+    "</shopify_json>",
+  ].join("\n");
+};
+
+const fetchShopifyProductJsonPayload = async (
+  url: string
+): Promise<unknown | null> => {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return null;
+  }
+
+  const basePath = parsed.pathname.endsWith("/")
+    ? parsed.pathname.slice(0, -1)
+    : parsed.pathname;
+  if (!basePath) {
+    return null;
+  }
+
+  const productJsonUrl = new URL(parsed.origin);
+  productJsonUrl.pathname = `${basePath}.js`;
+
+  const response = await fetch(productJsonUrl.toString(), {
+    headers: {
+      accept: "application/json",
+    },
+  });
+
+  if (response.status === 404) {
+    return null;
+  }
+  if (!response.ok) {
+    throw new Error(
+      `Failed to fetch Shopify product JSON (${response.status}) for ${productJsonUrl.toString()}`
+    );
+  }
+
+  return await response.json();
+};
+
+const canUseAiGatewayEnrichment = (): boolean => {
+  return Boolean(process.env.AI_GATEWAY_API_KEY);
+};
+
+const enrichShopifyCablesFromProductJson = async (
+  parsedCables: readonly ParsedCable[],
+  productUrl: string,
+  canonicalUrl: string,
+  workflowRunId: Id<"ingestionWorkflows">,
+  workflowItemId: Id<"ingestionWorkflowItems">,
+  getProviderConfig: () => ProviderConfig
+): Promise<ParsedCable[]> => {
+  if (
+    !parsedCables.some((parsed) => shouldAttemptShopifyJsonEnrichment(parsed))
+  ) {
+    return [...parsedCables];
+  }
+
+  const payload = await fetchShopifyProductJsonPayload(productUrl);
+  if (!payload) {
+    return [...parsedCables];
+  }
+
+  const firstCandidate =
+    parsedCables.find((parsed) => shouldAttemptShopifyJsonEnrichment(parsed)) ??
+    parsedCables[0];
+  if (!firstCandidate) {
+    return [...parsedCables];
+  }
+
+  const input = buildShopifyJsonEnrichmentInput(payload, {
+    sku: firstCandidate.sku,
+    variant: firstCandidate.variant,
+  });
+  if (!input) {
+    return [...parsedCables];
+  }
+
+  const deterministicSignals = deriveDeterministicPowerSignals(input);
+  const inputForPrompt = formatShopifyJsonInputForPrompt(input);
+
+  let llmEnrichment: ReturnType<
+    typeof shopifyJsonLlmEnrichmentSchema.parse
+  > | null = null;
+  const needsLlm =
+    canUseAiGatewayEnrichment() &&
+    parsedCables.some((parsed) => {
+      const withSignals = applyShopifyJsonPowerSignals(
+        parsed,
+        canonicalUrl,
+        deterministicSignals
+      );
+      return shouldAttemptShopifyJsonEnrichment(withSignals);
+    });
+
+  if (needsLlm) {
+    let providerConfig: ProviderConfig | null = null;
+    try {
+      providerConfig = getProviderConfig();
+    } catch {
+      providerConfig = null;
+    }
+    if (providerConfig) {
+      const { object } = await generateObject({
+        model: gateway(providerConfig.model),
+        schema: shopifyJsonLlmEnrichmentSchema,
+        system: SHOPIFY_JSON_ENRICHMENT_SYSTEM_PROMPT,
+        prompt: buildShopifyJsonEnrichmentPrompt(canonicalUrl, inputForPrompt),
+        temperature: 0,
+        experimental_telemetry: {
+          isEnabled: providerConfig.aiTelemetryEnabled,
+          functionId: "convex.ingest.enrichShopifyFromProductJson",
+          metadata: {
+            canonicalUrl,
+            workflowRunId,
+            workflowItemId,
+          },
+          recordInputs: providerConfig.aiTelemetryRecordInputs,
+          recordOutputs: providerConfig.aiTelemetryRecordOutputs,
+        },
+      });
+      llmEnrichment = object;
+    }
+  }
+
+  return parsedCables.map((parsed) => {
+    let next = applyShopifyJsonPowerSignals(
+      parsed,
+      canonicalUrl,
+      deterministicSignals
+    );
+    if (!(llmEnrichment && shouldAttemptShopifyJsonEnrichment(next))) {
+      return next;
+    }
+    next = applyShopifyJsonLlmEnrichment(
+      next,
+      canonicalUrl,
+      llmEnrichment,
+      inputForPrompt
+    );
+    return next;
   });
 };
 
@@ -444,7 +619,16 @@ const processWorkflowItem = async (
       }
 
       let parsedCables = shopifyExtraction?.parsedCables;
-      if (!parsedCables) {
+      if (parsedCables) {
+        parsedCables = await enrichShopifyCablesFromProductJson(
+          parsedCables,
+          url,
+          snapshot.canonicalUrl,
+          workflowRunId,
+          itemId,
+          getProviderConfig
+        );
+      } else {
         const providerConfig = getProviderConfig();
         const contentHash = createHash("sha256")
           .update(

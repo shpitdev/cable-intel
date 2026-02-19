@@ -20,6 +20,9 @@ const MIN_A80E6_ROWS = 6;
 const EXPECTED_A80E6_MAX_WATTS = 240;
 const OVERLAP_PRODUCT_SLUG_ONE = "a8662";
 const OVERLAP_PRODUCT_SLUG_TWO = "a8663";
+const SATECHI_USB4_PRODUCT_SLUG = "satechi-usb4-c-to-c-cable";
+const EXPECTED_SATECHI_USB4_ROWS = 2;
+const EXPECTED_SATECHI_USB4_WATTS = 100;
 const TEST_TIMEOUT_MS = 180_000;
 
 const modules = (() => {
@@ -242,6 +245,67 @@ describe("shopify ingest integration", () => {
       expect(
         [...workflowSkuCounts.values()].every((count) => count === 1)
       ).toBeTruthy();
+    },
+    TEST_TIMEOUT_MS
+  );
+
+  it(
+    "ingests Satechi USB4 rows with 100W from Shopify JSON attributes",
+    async () => {
+      const previousAiGateway = process.env.AI_GATEWAY_API_KEY;
+      const previousFirecrawl = process.env.FIRECRAWL_API_KEY;
+
+      process.env.AI_GATEWAY_API_KEY = undefined;
+      process.env.FIRECRAWL_API_KEY = undefined;
+
+      try {
+        const t = convexTest(schema, modules);
+
+        const ingestResult = await t.action(api.ingest.runSeedIngest, {
+          seedUrls: [
+            `https://satechi.com/products/${SATECHI_USB4_PRODUCT_SLUG}`,
+          ],
+        });
+
+        expect(ingestResult.totalItems).toBe(EXPECT_TOTAL_ITEMS);
+        expect(ingestResult.completedItems).toBe(EXPECT_COMPLETED_ITEMS);
+        expect(ingestResult.failedItems).toBe(EXPECT_FAILED_ITEMS);
+
+        const workflowReport = await t.query(
+          api.ingestQueries.getWorkflowReport,
+          {
+            workflowRunId: ingestResult.workflowRunId,
+            limit: TOP_CABLE_LIMIT,
+          }
+        );
+        const workflowRows = workflowReport.cables.filter((row) => {
+          return row.productUrl?.includes(SATECHI_USB4_PRODUCT_SLUG);
+        });
+
+        expect(workflowRows.length).toBe(EXPECTED_SATECHI_USB4_ROWS);
+        for (const row of workflowRows) {
+          expect(row.connectorFrom).toBe("USB-C");
+          expect(row.connectorTo).toBe("USB-C");
+          expect(row.power.maxWatts).toBe(EXPECTED_SATECHI_USB4_WATTS);
+          expect(row.qualityState).toBe("ready");
+          expect(
+            row.evidenceRefs.some((reference) => {
+              return reference.fieldPath === "power.maxWatts";
+            })
+          ).toBe(true);
+        }
+      } finally {
+        if (previousAiGateway !== undefined) {
+          process.env.AI_GATEWAY_API_KEY = previousAiGateway;
+        } else {
+          process.env.AI_GATEWAY_API_KEY = undefined;
+        }
+        if (previousFirecrawl !== undefined) {
+          process.env.FIRECRAWL_API_KEY = previousFirecrawl;
+        } else {
+          process.env.FIRECRAWL_API_KEY = undefined;
+        }
+      }
     },
     TEST_TIMEOUT_MS
   );
