@@ -7,6 +7,24 @@ const catalogQualityStateValidator = v.union(
   v.literal("needs_enrichment")
 );
 
+type CatalogQualityState = "ready" | "needs_enrichment";
+
+const LEGACY_QUALITY_STATE: CatalogQualityState = "needs_enrichment";
+const LEGACY_QUALITY_ISSUES = ["legacy_missing_quality_fields"] as const;
+
+const normalizeQualityState = (
+  value?: CatalogQualityState
+): CatalogQualityState => {
+  return value ?? LEGACY_QUALITY_STATE;
+};
+
+const normalizeQualityIssues = (value?: string[]): string[] => {
+  if (value && value.length > 0) {
+    return value;
+  }
+  return [...LEGACY_QUALITY_ISSUES];
+};
+
 const scoreSpecCompleteness = (spec: {
   power: {
     maxWatts?: number;
@@ -84,7 +102,7 @@ interface TopCableRow {
   };
   productUrl?: string;
   qualityIssues: string[];
-  qualityState: "ready" | "needs_enrichment";
+  qualityState: CatalogQualityState;
   sku?: string;
   sources: {
     sourceId: Id<"evidenceSources">;
@@ -181,8 +199,8 @@ const hydrateTopCableRows = async (
       video: spec.video,
       evidenceRefs: spec.evidenceRefs,
       sources,
-      qualityState: variant.qualityState,
-      qualityIssues: variant.qualityIssues,
+      qualityState: normalizeQualityState(variant.qualityState),
+      qualityIssues: normalizeQualityIssues(variant.qualityIssues),
     });
   }
 
@@ -384,7 +402,7 @@ interface WorkflowReport {
     sku?: string;
     connectorFrom: string;
     connectorTo: string;
-    qualityState: "ready" | "needs_enrichment";
+    qualityState: CatalogQualityState;
     qualityIssues: string[];
     productUrl?: string;
     imageUrls: string[];
@@ -664,8 +682,8 @@ const buildWorkflowReport = async (
         sku: match.variant.sku,
         connectorFrom: match.variant.connectorFrom,
         connectorTo: match.variant.connectorTo,
-        qualityState: match.variant.qualityState,
-        qualityIssues: match.variant.qualityIssues,
+        qualityState: normalizeQualityState(match.variant.qualityState),
+        qualityIssues: normalizeQualityIssues(match.variant.qualityIssues),
         productUrl: match.variant.productUrl,
         imageUrls: match.variant.imageUrls,
         power: match.spec.power,
