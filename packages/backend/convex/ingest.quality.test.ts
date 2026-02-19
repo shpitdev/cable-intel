@@ -161,6 +161,9 @@ describe("catalog quality gating", () => {
       limit: 10,
     });
     expect(reviewRows.length).toBe(2);
+    const readyRow = reviewRows.find((row) => row.qualityState === "ready");
+    expect(readyRow).toBeDefined();
+    expect(readyRow?.qualityIssues).toEqual([]);
     expect(
       reviewRows.some((row) => row.qualityState === "needs_enrichment")
     ).toBe(true);
