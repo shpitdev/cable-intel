@@ -26,6 +26,8 @@ interface CatalogRow {
     maxWatts?: number;
   };
   productUrl?: string;
+  qualityIssues?: string[];
+  qualityState?: "needs_enrichment" | "ready";
   sku?: string;
   variant?: string;
 }
@@ -308,6 +310,10 @@ const isBlank = (value: string | undefined): boolean => {
 };
 
 const analyzeRows = (rows: readonly CatalogRow[]) => {
+  const readyRows = rows.filter((row) => row.qualityState === "ready").length;
+  const needsEnrichmentRows = rows.filter(
+    (row) => row.qualityState === "needs_enrichment"
+  ).length;
   const missingBrand = rows.filter((row) => {
     const brand = row.brand?.trim().toLowerCase();
     return !brand || brand === "unknown";
@@ -336,8 +342,21 @@ const analyzeRows = (rows: readonly CatalogRow[]) => {
     return from === "USB-C" && to === "USB-C" && watts <= 0;
   });
 
+  const qualityIssueCounts = new Map<string, number>();
+  for (const row of rows) {
+    for (const issue of row.qualityIssues ?? []) {
+      qualityIssueCounts.set(issue, (qualityIssueCounts.get(issue) ?? 0) + 1);
+    }
+  }
+  const topQualityIssues = [...qualityIssueCounts.entries()]
+    .sort((left, right) => right[1] - left[1])
+    .slice(0, 7)
+    .map(([issue, count]) => ({ issue, count }));
+
   return {
     rows: rows.length,
+    readyRows,
+    needsEnrichmentRows,
     missingBrand,
     missingVariant,
     missingSku,
@@ -346,6 +365,7 @@ const analyzeRows = (rows: readonly CatalogRow[]) => {
     missingImage,
     missingConnector,
     usbCToCMissingWatts: usbCToCMissingWattsRows.length,
+    topQualityIssues,
     tuningCandidates: usbCToCMissingWattsRows.slice(0, 7).map((row) => ({
       model: row.model ?? "",
       sku: row.sku ?? "",
@@ -526,13 +546,21 @@ const main = async (): Promise<void> => {
   }
 
   const rows = runConvex<CatalogRow[]>(
-    "ingestQueries:getTopCables",
+    "ingestQueries:getTopCablesForReview",
     deploymentName,
     { limit: 500 },
     backendDir
   );
+  const enrichmentQueue = runConvex<{
+    failed: number;
+    inProgress: number;
+    pending: number;
+  }>("ingestQueries:getEnrichmentQueueSummary", deploymentName, {}, backendDir);
   const quality = analyzeRows(rows);
 
+  print("");
+  print("Enrichment queue summary:");
+  print(JSON.stringify(enrichmentQueue, null, 2));
   print("");
   print("Quality summary:");
   print(JSON.stringify(quality, null, 2));

@@ -14,6 +14,18 @@ const workflowItemStatusValidator = v.union(
   v.literal("failed")
 );
 
+const catalogQualityStateValidator = v.union(
+  v.literal("ready"),
+  v.literal("needs_enrichment")
+);
+
+const enrichmentJobStatusValidator = v.union(
+  v.literal("pending"),
+  v.literal("in_progress"),
+  v.literal("completed"),
+  v.literal("failed")
+);
+
 const visibilityValidator = v.union(
   v.literal("private"),
   v.literal("shared"),
@@ -98,13 +110,32 @@ export default defineSchema({
     connectorTo: v.string(),
     productUrl: v.optional(v.string()),
     imageUrls: v.array(v.string()),
+    qualityState: catalogQualityStateValidator,
+    qualityIssues: v.array(v.string()),
+    qualityUpdatedAt: v.number(),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_brand_model", ["brand", "model"])
     .index("by_brand_sku", ["brand", "sku"])
     .index("by_connector_pair", ["connectorFrom", "connectorTo"])
-    .index("by_product_url", ["productUrl"]),
+    .index("by_product_url", ["productUrl"])
+    .index("by_quality_state", ["qualityState"]),
+
+  catalogEnrichmentJobs: defineTable({
+    variantId: v.id("cableVariants"),
+    workflowRunId: v.optional(v.id("ingestionWorkflows")),
+    status: enrichmentJobStatusValidator,
+    reason: v.optional(v.string()),
+    attemptCount: v.number(),
+    lastError: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    completedAt: v.optional(v.number()),
+  })
+    .index("by_status", ["status"])
+    .index("by_variant", ["variantId"])
+    .index("by_variant_status", ["variantId", "status"]),
 
   normalizedSpecs: defineTable({
     workflowRunId: v.id("ingestionWorkflows"),

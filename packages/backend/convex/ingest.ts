@@ -10,7 +10,7 @@ import {
 } from "@cable-intel/shopify-cable-source";
 import { gateway, generateObject } from "ai";
 import { v } from "convex/values";
-import { internal } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { type ActionCtx, action } from "./_generated/server";
 import { getIngestConfig, ingestDefaults } from "./config";
@@ -21,6 +21,7 @@ import {
 
 const MAX_MARKDOWN_CHARS = 120_000;
 const FIRECRAWL_SCRAPE_URL = "https://api.firecrawl.dev/v1/scrape";
+const MAX_ENRICHMENT_ATTEMPTS = 3;
 
 interface ScrapedSnapshot {
   canonicalUrl: string;
@@ -37,6 +38,13 @@ interface RunSeedIngestResult {
   status: Doc<"ingestionWorkflows">["status"];
   totalItems: number;
   workflowRunId: Id<"ingestionWorkflows">;
+}
+
+interface RunEnrichmentBatchResult {
+  attemptedJobs: number;
+  completedJobs: number;
+  failedJobs: number;
+  pendingJobs: number;
 }
 
 interface ExtractedCablesForUrl {
@@ -618,6 +626,119 @@ export const runSeedIngest = action({
       completedItems: workflow.completedItems,
       failedItems: workflow.failedItems,
       status: workflow.status,
+    };
+  },
+});
+
+export const runEnrichmentBatch = action({
+  args: {
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args): Promise<RunEnrichmentBatchResult> => {
+    const limit = Math.min(Math.max(args.limit ?? 10, 1), 50);
+    const pendingJobs = await ctx.runQuery(
+      internal.ingestDb.listEnrichmentJobsByStatus,
+      {
+        status: "pending",
+        limit,
+      }
+    );
+
+    let completedJobs = 0;
+    let failedJobs = 0;
+    let pendingJobsAfterAttempt = 0;
+
+    for (const job of pendingJobs) {
+      await ctx.runMutation(internal.ingestDb.updateEnrichmentJobStatus, {
+        jobId: job._id,
+        status: "in_progress",
+        now: Date.now(),
+        incrementAttemptCount: true,
+      });
+
+      try {
+        const variant = await ctx.runQuery(
+          internal.ingestDb.getVariantForEnrichment,
+          {
+            variantId: job.variantId,
+          }
+        );
+        const productUrl = variant?.productUrl?.trim();
+        if (!(variant && productUrl)) {
+          failedJobs += 1;
+          await ctx.runMutation(internal.ingestDb.updateEnrichmentJobStatus, {
+            jobId: job._id,
+            status: "failed",
+            now: Date.now(),
+            lastError: "Variant missing product URL for enrichment.",
+          });
+          continue;
+        }
+
+        const host = new URL(productUrl).hostname;
+        const ingestResult = await ctx.runAction(api.ingest.runSeedIngest, {
+          seedUrls: [productUrl],
+          allowedDomains: [host],
+          maxItems: 1,
+        });
+
+        const refreshedVariant = await ctx.runQuery(
+          internal.ingestDb.getVariantForEnrichment,
+          {
+            variantId: job.variantId,
+          }
+        );
+        if (
+          ingestResult.completedItems > 0 &&
+          refreshedVariant?.qualityState === "ready"
+        ) {
+          completedJobs += 1;
+          await ctx.runMutation(internal.ingestDb.updateEnrichmentJobStatus, {
+            jobId: job._id,
+            status: "completed",
+            workflowRunId: ingestResult.workflowRunId,
+            now: Date.now(),
+          });
+          continue;
+        }
+
+        const nextAttemptCount = job.attemptCount + 1;
+        if (nextAttemptCount >= MAX_ENRICHMENT_ATTEMPTS) {
+          failedJobs += 1;
+          await ctx.runMutation(internal.ingestDb.updateEnrichmentJobStatus, {
+            jobId: job._id,
+            status: "failed",
+            workflowRunId: ingestResult.workflowRunId,
+            now: Date.now(),
+            lastError: "Variant still needs enrichment after max attempts.",
+          });
+          continue;
+        }
+
+        pendingJobsAfterAttempt += 1;
+        await ctx.runMutation(internal.ingestDb.updateEnrichmentJobStatus, {
+          jobId: job._id,
+          status: "pending",
+          workflowRunId: ingestResult.workflowRunId,
+          now: Date.now(),
+          lastError: "Variant still needs enrichment.",
+        });
+      } catch (error) {
+        failedJobs += 1;
+        await ctx.runMutation(internal.ingestDb.updateEnrichmentJobStatus, {
+          jobId: job._id,
+          status: "failed",
+          now: Date.now(),
+          lastError: getErrorMessage(error),
+        });
+      }
+    }
+
+    return {
+      attemptedJobs: pendingJobs.length,
+      completedJobs,
+      failedJobs,
+      pendingJobs: pendingJobsAfterAttempt,
     };
   },
 });
