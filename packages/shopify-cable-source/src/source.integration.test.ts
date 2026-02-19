@@ -192,4 +192,26 @@ describe("shopify cable source integration", () => {
       expect(cable.model.toLowerCase().includes("anker")).toBe(true);
     }
   }, 120_000);
+
+  it("derives 240W power for all Anker A80E6 USB-C variants", async () => {
+    const source = createShopifyCableSource(ankerTemplate);
+    const result = await source.extractFromProductUrl(
+      "https://www.anker.com/products/a80e6"
+    );
+
+    expect(result).not.toBeNull();
+    if (!result) {
+      return;
+    }
+
+    expect(result.cables.length).toBe(7);
+    for (const cable of result.cables) {
+      expect(cable.connectorPair.from).toBe("USB-C");
+      expect(cable.connectorPair.to).toBe("USB-C");
+      expect(cable.power.maxWatts).toBe(240);
+      expect(
+        cable.evidence.some((item) => item.fieldPath === "power.maxWatts")
+      ).toBe(true);
+    }
+  }, 120_000);
 });

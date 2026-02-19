@@ -540,6 +540,31 @@ const getKeyFeatureText = (product: ShopifyProduct): string[] => {
   return lines;
 };
 
+const getImageAltText = (product: ShopifyProduct): string[] => {
+  const imageAltText = [
+    ...(product.images ?? []).map((image) => cleanText(image.altText)),
+    ...(product.variants ?? []).map((variant) =>
+      cleanText(variant.image?.altText)
+    ),
+  ];
+
+  const seen = new Set<string>();
+  const deduped: string[] = [];
+  for (const value of imageAltText) {
+    if (!value) {
+      continue;
+    }
+    const normalized = value.toLowerCase();
+    if (seen.has(normalized)) {
+      continue;
+    }
+    seen.add(normalized);
+    deduped.push(value);
+  }
+
+  return deduped;
+};
+
 const buildMarkdownSource = (
   brand: string,
   model: string,
@@ -647,10 +672,12 @@ const buildProductExtractionContext = (
   const model = ensureBrandInModel(brand, rawModel);
   const description = cleanText(product.description);
   const keyFeatures = getKeyFeatureText(product);
+  const imageAltText = getImageAltText(product);
   const contextText = [model, description, ...keyFeatures].join("\n");
+  const powerContextText = [contextText, ...imageAltText].join("\n");
   const connectorPair = parseConnectorPair(model, contextText);
   const data = getDataCapability(contextText, connectorPair);
-  const power = getPowerCapability(contextText);
+  const power = getPowerCapability(powerContextText);
   const variants = Array.isArray(product.variants)
     ? product.variants
     : ([{}] as ShopifyVariant[]);
@@ -672,7 +699,13 @@ const buildProductExtractionContext = (
     variants
   );
 
-  const sourceText = [model, description, ...keyFeatures, markdown].join("\n");
+  const sourceText = [
+    model,
+    description,
+    ...keyFeatures,
+    ...imageAltText,
+    markdown,
+  ].join("\n");
 
   return {
     brand,
