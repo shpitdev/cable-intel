@@ -9,10 +9,10 @@ import type { CableProfile, CatalogCableRow, MarkingsDraft } from "$lib/types";
 const MARKDOWN_DECORATION_REGEX = /[*_`#]/g;
 const MODEL_NUMBER_PREFIX_REGEX = /^model number:\s*/i;
 const WHITESPACE_REGEX = /\s+/g;
-const BRAND_SLUG_REGEX = /-?anker-?/gi;
 const TOKEN_SPLIT_REGEX = /[\s-]+/;
 const DIGIT_REGEX = /\d/;
 const MODEL_CODE_REGEX = /^[a-z0-9]+(?:[/-][a-z0-9]+)*$/i;
+const REGEX_SPECIAL_CHARACTER_REGEX = /[.*+?^${}()|[\]\\]/g;
 
 const toTitleCase = (value: string): string => {
   return value
@@ -44,7 +44,10 @@ const cleanEvidenceSnippet = (value?: string): string | undefined => {
   return cleaned || undefined;
 };
 
-const getSlugTitle = (productUrl?: string): string | undefined => {
+const getSlugTitle = (
+  brand: string,
+  productUrl?: string
+): string | undefined => {
   if (!productUrl) {
     return undefined;
   }
@@ -56,9 +59,17 @@ const getSlugTitle = (productUrl?: string): string | undefined => {
       return undefined;
     }
 
-    const withoutBrand = slug
-      .replace(BRAND_SLUG_REGEX, "")
-      .replaceAll("--", "-");
+    const normalizedBrand = brand.trim().replaceAll(WHITESPACE_REGEX, "-");
+    const escapedBrand = normalizedBrand.replace(
+      REGEX_SPECIAL_CHARACTER_REGEX,
+      "\\$&"
+    );
+    const brandSlugRegex = escapedBrand
+      ? new RegExp(`-?${escapedBrand}-?`, "gi")
+      : null;
+    const withoutBrand = (
+      brandSlugRegex ? slug.replace(brandSlugRegex, "") : slug
+    ).replaceAll("--", "-");
     const normalized = withoutBrand.replaceAll("-", " ").trim();
     if (!normalized) {
       return undefined;
@@ -82,7 +93,7 @@ const getDisplayName = (row: CatalogCableRow): string => {
 
   const modelEvidenceTitle = cleanEvidenceSnippet(modelEvidence);
   const brandEvidenceTitle = cleanEvidenceSnippet(brandEvidence);
-  const slugTitle = getSlugTitle(row.productUrl);
+  const slugTitle = getSlugTitle(brand, row.productUrl);
   const normalizedModel = model.toLowerCase();
   const normalizedBrand = brand.toLowerCase();
   const isModelCode =
