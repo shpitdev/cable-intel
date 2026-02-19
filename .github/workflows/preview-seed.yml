@@ -97,6 +97,13 @@ jobs:
             echo "Deployment status event did not include an environment URL."
             exit 1
           fi
+          case "${PREVIEW_URL}" in
+            http://*|https://*) ;;
+            *)
+              echo "Deployment URL '${PREVIEW_URL}' is invalid; expected http(s) URL."
+              exit 1
+              ;;
+          esac
           echo "Seeding preview deployment at ${PREVIEW_URL}"
 
       - name: Check Convex credentials
