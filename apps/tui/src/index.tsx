@@ -257,6 +257,76 @@ const runCommand = (command: string, args: string[], cwd: string): string => {
   return (result.stdout ?? "").trim();
 };
 
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: JSON scanning uses an explicit string/escape depth state machine.
+const findBalancedJsonSlice = (text: string, start: number): string | null => {
+  const opener = text[start];
+  if (!(opener === "{" || opener === "[")) {
+    return null;
+  }
+  const closer = opener === "{" ? "}" : "]";
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let index = start; index < text.length; index += 1) {
+    const char = text[index];
+    if (!char) {
+      continue;
+    }
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === "\\") {
+        escaped = true;
+      } else if (char === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (char === '"') {
+      inString = true;
+      continue;
+    }
+    if (char === opener) {
+      depth += 1;
+      continue;
+    }
+    if (char === closer) {
+      depth -= 1;
+      if (depth === 0) {
+        return text.slice(start, index + 1);
+      }
+    }
+  }
+
+  return null;
+};
+
+function parseTrailingJson<T>(text: string): T | null {
+  const startIndexes = [...text.matchAll(/[[{]/g)].map((match) => {
+    return match.index ?? -1;
+  });
+
+  for (let cursor = startIndexes.length - 1; cursor >= 0; cursor -= 1) {
+    const start = startIndexes[cursor];
+    if (start < 0) {
+      continue;
+    }
+    const candidate = findBalancedJsonSlice(text, start);
+    if (!candidate) {
+      continue;
+    }
+    try {
+      return JSON.parse(candidate) as T;
+    } catch {
+      // Keep scanning older candidates.
+    }
+  }
+
+  return null;
+}
+
 function parseJsonOutput<T>(raw: string): T {
   const trimmed = raw.trim();
   if (!trimmed) {
@@ -266,20 +336,11 @@ function parseJsonOutput<T>(raw: string): T {
   try {
     return JSON.parse(trimmed) as T;
   } catch {
-    const firstArray = trimmed.indexOf("[");
-    const firstObject = trimmed.indexOf("{");
-    const firstIndexCandidates = [firstArray, firstObject].filter(
-      (index) => index >= 0
-    );
-    const firstIndex = Math.min(...firstIndexCandidates);
-    const opensWithArray = trimmed[firstIndex] === "[";
-    const lastIndex = opensWithArray
-      ? trimmed.lastIndexOf("]")
-      : trimmed.lastIndexOf("}");
-    if (firstIndex < 0 || lastIndex < firstIndex) {
-      throw new Error(`Failed to parse command output as JSON:\n${trimmed}`);
+    const parsed = parseTrailingJson<T>(trimmed);
+    if (parsed !== null) {
+      return parsed;
     }
-    return JSON.parse(trimmed.slice(firstIndex, lastIndex + 1)) as T;
+    throw new Error(`Failed to parse command output as JSON:\n${trimmed}`);
   }
 }
 
