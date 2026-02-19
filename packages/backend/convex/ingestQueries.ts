@@ -19,7 +19,7 @@ const normalizeQualityState = (
 };
 
 const normalizeQualityIssues = (value?: string[]): string[] => {
-  if (value && value.length > 0) {
+  if (value) {
     return value;
   }
   return [...LEGACY_QUALITY_ISSUES];
