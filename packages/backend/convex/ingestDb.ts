@@ -1,8 +1,20 @@
 import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
-import { internalMutation, internalQuery } from "./_generated/server";
+import {
+  internalMutation,
+  internalQuery,
+  type MutationCtx,
+} from "./_generated/server";
+import { assessCatalogQuality } from "./catalogQuality";
 
 const workflowItemStatusValidator = v.union(
+  v.literal("pending"),
+  v.literal("in_progress"),
+  v.literal("completed"),
+  v.literal("failed")
+);
+
+const enrichmentJobStatusValidator = v.union(
   v.literal("pending"),
   v.literal("in_progress"),
   v.literal("completed"),
@@ -150,6 +162,105 @@ const pickNewestVariant = (
   })[0];
 };
 
+const getOpenEnrichmentJob = async (
+  ctx: MutationCtx,
+  variantId: Id<"cableVariants">
+): Promise<Doc<"catalogEnrichmentJobs"> | null> => {
+  const pendingJob = await ctx.db
+    .query("catalogEnrichmentJobs")
+    .withIndex("by_variant_status", (q) =>
+      q.eq("variantId", variantId).eq("status", "pending")
+    )
+    .first();
+  if (pendingJob) {
+    return pendingJob;
+  }
+  return await ctx.db
+    .query("catalogEnrichmentJobs")
+    .withIndex("by_variant_status", (q) =>
+      q.eq("variantId", variantId).eq("status", "in_progress")
+    )
+    .first();
+};
+
+const ensurePendingEnrichmentJob = async (
+  ctx: MutationCtx,
+  args: {
+    now: number;
+    reason: string | undefined;
+    variantId: Id<"cableVariants">;
+    workflowRunId: Id<"ingestionWorkflows">;
+  }
+): Promise<void> => {
+  const openJob = await getOpenEnrichmentJob(ctx, args.variantId);
+  if (openJob) {
+    await ctx.db.patch(openJob._id, {
+      reason: args.reason ?? openJob.reason,
+      updatedAt: args.now,
+      workflowRunId: args.workflowRunId,
+    });
+    return;
+  }
+
+  const latestFailedJob = await ctx.db
+    .query("catalogEnrichmentJobs")
+    .withIndex("by_variant_status", (q) =>
+      q.eq("variantId", args.variantId).eq("status", "failed")
+    )
+    .order("desc")
+    .first();
+  if (latestFailedJob) {
+    await ctx.db.patch(latestFailedJob._id, {
+      status: "pending",
+      reason: args.reason ?? latestFailedJob.reason,
+      lastError: undefined,
+      updatedAt: args.now,
+      workflowRunId: args.workflowRunId,
+      completedAt: undefined,
+    });
+    return;
+  }
+
+  await ctx.db.insert("catalogEnrichmentJobs", {
+    variantId: args.variantId,
+    workflowRunId: args.workflowRunId,
+    status: "pending",
+    reason: args.reason,
+    attemptCount: 0,
+    createdAt: args.now,
+    updatedAt: args.now,
+  });
+};
+
+const completeOpenEnrichmentJobs = async (
+  ctx: MutationCtx,
+  variantId: Id<"cableVariants">,
+  now: number
+): Promise<void> => {
+  const pendingJobs = await ctx.db
+    .query("catalogEnrichmentJobs")
+    .withIndex("by_variant_status", (q) =>
+      q.eq("variantId", variantId).eq("status", "pending")
+    )
+    .collect();
+  const inProgressJobs = await ctx.db
+    .query("catalogEnrichmentJobs")
+    .withIndex("by_variant_status", (q) =>
+      q.eq("variantId", variantId).eq("status", "in_progress")
+    )
+    .collect();
+
+  for (const job of [...pendingJobs, ...inProgressJobs]) {
+    await ctx.db.patch(job._id, {
+      status: "completed",
+      reason: undefined,
+      lastError: undefined,
+      updatedAt: now,
+      completedAt: now,
+    });
+  }
+};
+
 export const createWorkflow = internalMutation({
   args: {
     allowedDomains: v.array(v.string()),
@@ -290,6 +401,11 @@ export const upsertVariantAndInsertSpec = internalMutation({
   },
   handler: async (ctx, args) => {
     const parsedImageUrls = args.parsed.images.map((image) => image.url);
+    const parsedEvidenceRefs = args.parsed.evidence.map((evidence) => ({
+      fieldPath: evidence.fieldPath,
+      sourceId: args.evidenceSourceId,
+      snippet: evidence.snippet,
+    }));
     const matchingVariantsBySku = args.parsed.sku
       ? await ctx.db
           .query("cableVariants")
@@ -329,27 +445,48 @@ export const upsertVariantAndInsertSpec = internalMutation({
     const existingVariant = existingVariantBySku ?? existingVariantByModel;
 
     let variantId = existingVariant?._id;
+    let nextModel = args.parsed.model;
+    let nextVariant = args.parsed.variant;
+    let nextSku = args.parsed.sku;
+    let nextProductUrl = args.sourceUrl;
+    let nextImageUrls = parsedImageUrls;
+
     if (existingVariant) {
-      const nextImageUrls = mergeUniqueStrings(
+      nextImageUrls = mergeUniqueStrings(
         existingVariant.imageUrls,
         parsedImageUrls
       );
-      const nextModel = pickPreferredModel(
-        existingVariant.model,
-        args.parsed.model
-      );
-      const nextSku = existingVariant.sku ?? args.parsed.sku;
-      const nextVariant = pickPreferredVariant(
+      nextModel = pickPreferredModel(existingVariant.model, args.parsed.model);
+      nextSku = existingVariant.sku ?? args.parsed.sku;
+      nextVariant = pickPreferredVariant(
         existingVariant.variant,
         args.parsed.variant,
         nextSku
       );
+      nextProductUrl = existingVariant.productUrl ?? args.sourceUrl;
+    }
+
+    const qualityAssessment = assessCatalogQuality({
+      brand: args.parsed.brand,
+      model: nextModel,
+      connectorFrom: args.parsed.connectorPair.from,
+      connectorTo: args.parsed.connectorPair.to,
+      productUrl: nextProductUrl,
+      imageUrls: nextImageUrls,
+      power: args.parsed.power,
+      evidenceRefs: parsedEvidenceRefs,
+    });
+
+    if (existingVariant) {
       await ctx.db.patch(existingVariant._id, {
         model: nextModel,
         variant: nextVariant,
         sku: nextSku,
-        productUrl: existingVariant.productUrl ?? args.sourceUrl,
+        productUrl: nextProductUrl,
         imageUrls: nextImageUrls,
+        qualityState: qualityAssessment.state,
+        qualityIssues: qualityAssessment.issues,
+        qualityUpdatedAt: args.now,
         updatedAt: args.now,
       });
     } else {
@@ -360,8 +497,11 @@ export const upsertVariantAndInsertSpec = internalMutation({
         sku: args.parsed.sku,
         connectorFrom: args.parsed.connectorPair.from,
         connectorTo: args.parsed.connectorPair.to,
-        productUrl: args.sourceUrl,
-        imageUrls: parsedImageUrls,
+        productUrl: nextProductUrl,
+        imageUrls: nextImageUrls,
+        qualityState: qualityAssessment.state,
+        qualityIssues: qualityAssessment.issues,
+        qualityUpdatedAt: args.now,
         createdAt: args.now,
         updatedAt: args.now,
       });
@@ -378,16 +518,84 @@ export const upsertVariantAndInsertSpec = internalMutation({
       power: args.parsed.power,
       data: args.parsed.data,
       video: args.parsed.video,
-      evidenceRefs: args.parsed.evidence.map((evidence) => ({
-        fieldPath: evidence.fieldPath,
-        sourceId: args.evidenceSourceId,
-        snippet: evidence.snippet,
-      })),
+      evidenceRefs: parsedEvidenceRefs,
       createdAt: args.now,
       updatedAt: args.now,
     });
 
-    return { normalizedSpecId, variantId };
+    if (qualityAssessment.state === "needs_enrichment") {
+      await ensurePendingEnrichmentJob(ctx, {
+        variantId,
+        workflowRunId: args.workflowRunId,
+        reason: qualityAssessment.issues[0],
+        now: args.now,
+      });
+    } else {
+      await completeOpenEnrichmentJobs(ctx, variantId, args.now);
+    }
+
+    return {
+      normalizedSpecId,
+      variantId,
+      qualityState: qualityAssessment.state,
+      qualityIssues: qualityAssessment.issues,
+    };
+  },
+});
+
+export const listEnrichmentJobsByStatus = internalQuery({
+  args: {
+    status: enrichmentJobStatusValidator,
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const limit = Math.max(args.limit ?? 10, 0);
+    return await ctx.db
+      .query("catalogEnrichmentJobs")
+      .withIndex("by_status", (q) => q.eq("status", args.status))
+      .order("asc")
+      .take(limit);
+  },
+});
+
+export const getVariantForEnrichment = internalQuery({
+  args: {
+    variantId: v.id("cableVariants"),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.variantId);
+  },
+});
+
+export const updateEnrichmentJobStatus = internalMutation({
+  args: {
+    jobId: v.id("catalogEnrichmentJobs"),
+    status: enrichmentJobStatusValidator,
+    now: v.number(),
+    workflowRunId: v.optional(v.id("ingestionWorkflows")),
+    lastError: v.optional(v.string()),
+    incrementAttemptCount: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const job = await ctx.db.get(args.jobId);
+    if (!job) {
+      throw new Error(`Enrichment job not found: ${args.jobId}`);
+    }
+
+    const nextAttemptCount =
+      args.incrementAttemptCount === true
+        ? job.attemptCount + 1
+        : job.attemptCount;
+    const isTerminal = args.status === "completed" || args.status === "failed";
+
+    await ctx.db.patch(args.jobId, {
+      status: args.status,
+      attemptCount: nextAttemptCount,
+      updatedAt: args.now,
+      lastError: args.lastError,
+      workflowRunId: args.workflowRunId ?? job.workflowRunId,
+      completedAt: isTerminal ? args.now : undefined,
+    });
   },
 });
 

@@ -2,6 +2,11 @@ import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { type QueryCtx, query } from "./_generated/server";
 
+const catalogQualityStateValidator = v.union(
+  v.literal("ready"),
+  v.literal("needs_enrichment")
+);
+
 const scoreSpecCompleteness = (spec: {
   power: {
     maxWatts?: number;
@@ -78,6 +83,8 @@ interface TopCableRow {
     eprSupported?: boolean;
   };
   productUrl?: string;
+  qualityIssues: string[];
+  qualityState: "ready" | "needs_enrichment";
   sku?: string;
   sources: {
     sourceId: Id<"evidenceSources">;
@@ -174,6 +181,8 @@ const hydrateTopCableRows = async (
       video: spec.video,
       evidenceRefs: spec.evidenceRefs,
       sources,
+      qualityState: variant.qualityState,
+      qualityIssues: variant.qualityIssues,
     });
   }
 
@@ -266,6 +275,10 @@ const isPreferredSkuRow = (
   candidate: TopCableRow,
   current: TopCableRow
 ): boolean => {
+  if (candidate.qualityState !== current.qualityState) {
+    return candidate.qualityState === "ready";
+  }
+
   const candidateScore = scoreTopCableRow(candidate);
   const currentScore = scoreTopCableRow(current);
   if (candidateScore !== currentScore) {
@@ -371,6 +384,8 @@ interface WorkflowReport {
     sku?: string;
     connectorFrom: string;
     connectorTo: string;
+    qualityState: "ready" | "needs_enrichment";
+    qualityIssues: string[];
     productUrl?: string;
     imageUrls: string[];
     power: {
@@ -649,6 +664,8 @@ const buildWorkflowReport = async (
         sku: match.variant.sku,
         connectorFrom: match.variant.connectorFrom,
         connectorTo: match.variant.connectorTo,
+        qualityState: match.variant.qualityState,
+        qualityIssues: match.variant.qualityIssues,
         productUrl: match.variant.productUrl,
         imageUrls: match.variant.imageUrls,
         power: match.spec.power,
@@ -706,6 +723,30 @@ export const getLatestWorkflowReport = query({
 export const getTopCables = query({
   args: {
     limit: v.optional(v.number()),
+    includeStates: v.optional(v.array(catalogQualityStateValidator)),
+  },
+  handler: async (ctx, args) => {
+    const limit = Math.max(args.limit ?? 10, 0);
+    const scanLimit = Math.max(limit * 40, limit);
+    const includeStates = new Set(args.includeStates ?? ["ready"]);
+    const specs = await ctx.db
+      .query("normalizedSpecs")
+      .order("desc")
+      .take(scanLimit);
+    const rankedSpecs = pickBestSpecsByVariant(specs, scanLimit);
+    const hydratedRows = await hydrateTopCableRows(ctx, rankedSpecs);
+    const cleanedRows = pruneLegacyCatalogRows(hydratedRows);
+    const dedupedRows = dedupeRowsByBrandSku(cleanedRows);
+    const stateFilteredRows = dedupedRows.filter((row) => {
+      return includeStates.has(row.qualityState);
+    });
+    return stateFilteredRows.slice(0, limit);
+  },
+});
+
+export const getTopCablesForReview = query({
+  args: {
+    limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const limit = Math.max(args.limit ?? 10, 0);
@@ -719,5 +760,29 @@ export const getTopCables = query({
     const cleanedRows = pruneLegacyCatalogRows(hydratedRows);
     const dedupedRows = dedupeRowsByBrandSku(cleanedRows);
     return dedupedRows.slice(0, limit);
+  },
+});
+
+export const getEnrichmentQueueSummary = query({
+  args: {},
+  handler: async (ctx) => {
+    const pending = await ctx.db
+      .query("catalogEnrichmentJobs")
+      .withIndex("by_status", (q) => q.eq("status", "pending"))
+      .collect();
+    const inProgress = await ctx.db
+      .query("catalogEnrichmentJobs")
+      .withIndex("by_status", (q) => q.eq("status", "in_progress"))
+      .collect();
+    const failed = await ctx.db
+      .query("catalogEnrichmentJobs")
+      .withIndex("by_status", (q) => q.eq("status", "failed"))
+      .collect();
+
+    return {
+      pending: pending.length,
+      inProgress: inProgress.length,
+      failed: failed.length,
+    };
   },
 });
