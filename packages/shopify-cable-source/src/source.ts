@@ -58,8 +58,10 @@ interface ShopifySearchSuggestResponse {
   resources?: {
     results?: {
       products?: Array<{
+        body?: string;
         handle?: string;
         title?: string;
+        url?: string;
       }>;
     };
   };
@@ -195,6 +197,28 @@ const cleanText = (value: string | undefined | null): string => {
     return "";
   }
   return normalizeWhitespace(stripTags(value));
+};
+
+const combineUniqueText = (...segments: Array<string | undefined>): string => {
+  const seen = new Set<string>();
+  const unique: string[] = [];
+
+  for (const segment of segments) {
+    const cleaned = cleanText(segment);
+    if (!cleaned) {
+      continue;
+    }
+
+    const normalized = cleaned.toLowerCase();
+    if (seen.has(normalized)) {
+      continue;
+    }
+
+    seen.add(normalized);
+    unique.push(cleaned);
+  }
+
+  return unique.join("\n");
 };
 
 const slugify = (value: string): string => {
@@ -809,12 +833,17 @@ const getVariantPowerCapability = (
 const buildProductExtractionContext = (
   template: ShopifyCableSourceTemplate,
   productPath: string,
-  product: ShopifyProduct
+  product: ShopifyProduct,
+  supplementalDescription?: string
 ): ProductExtractionContext => {
   const brand = normalizeBrand(product.vendor ?? "", template.name);
   const rawModel = cleanText(product.title ?? product.name);
   const model = ensureBrandInModel(brand, rawModel);
-  const description = cleanText(product.description);
+  const description = combineUniqueText(
+    product.description,
+    product.descriptionHtml,
+    supplementalDescription
+  );
   const keyFeatures = getKeyFeatureText(product);
   const imageAltText = getImageAltText(product);
   const contextText = [model, description, ...keyFeatures].join("\n");
@@ -986,10 +1015,20 @@ const buildCableSpecs = (
 const buildExtractionResultFromProduct = (
   template: ShopifyCableSourceTemplate,
   productPath: string,
-  product: ShopifyProduct
+  product: ShopifyProduct,
+  supplementalDescription?: string
 ): ShopifyExtractionResult => {
-  const context = buildProductExtractionContext(template, productPath, product);
-  const descriptionText = cleanText(product.descriptionHtml);
+  const context = buildProductExtractionContext(
+    template,
+    productPath,
+    product,
+    supplementalDescription
+  );
+  const descriptionText = combineUniqueText(
+    product.descriptionHtml,
+    product.description,
+    supplementalDescription
+  );
   const html = descriptionText
     ? toSafeHtmlParagraph(descriptionText)
     : toSafeHtmlParagraph(context.markdown);
@@ -1018,6 +1057,14 @@ export const createShopifyCableSource = (
   template: ShopifyCableSourceTemplate
 ): ShopifyCableSource => {
   let cachedBuildId: string | undefined;
+  const suggestProductByHandle = new Map<
+    string,
+    {
+      body: string;
+      title: string;
+      url: string;
+    }
+  >();
 
   const isRecoverableNextDataError = (error: unknown): boolean => {
     if (error instanceof HttpError && error.status === 404) {
@@ -1058,11 +1105,65 @@ export const createShopifyCableSource = (
     return cachedBuildId;
   };
 
-  const fetchSearchSuggestCandidates = async (): Promise<
-    ShopifyProductCandidate[]
+  const indexSearchSuggestProducts = (
+    payload: ShopifySearchSuggestResponse
+  ): Array<{
+    body: string;
+    handle: string;
+    title: string;
+    url: string;
+  }> => {
+    const products = payload.resources?.results?.products;
+    if (!Array.isArray(products)) {
+      return [];
+    }
+
+    const indexedProducts: Array<{
+      body: string;
+      handle: string;
+      title: string;
+      url: string;
+    }> = [];
+
+    for (const product of products) {
+      const handle = cleanText(product.handle);
+      const title = cleanText(product.title);
+      if (!(handle && title)) {
+        continue;
+      }
+
+      const body = cleanText(product.body);
+      const url = cleanText(product.url);
+
+      suggestProductByHandle.set(handle.toLowerCase(), {
+        body,
+        title,
+        url,
+      });
+
+      indexedProducts.push({
+        body,
+        handle,
+        title,
+        url,
+      });
+    }
+
+    return indexedProducts;
+  };
+
+  const fetchSearchSuggestProducts = async (
+    query: string
+  ): Promise<
+    Array<{
+      body: string;
+      handle: string;
+      title: string;
+      url: string;
+    }>
   > => {
     const suggestUrl = new URL("/search/suggest.json", template.baseUrl);
-    suggestUrl.searchParams.set("q", template.searchQueryValue);
+    suggestUrl.searchParams.set("q", query);
     suggestUrl.searchParams.set("resources[type]", "product");
     suggestUrl.searchParams.set("resources[limit]", "250");
     suggestUrl.searchParams.set(
@@ -1083,17 +1184,75 @@ export const createShopifyCableSource = (
     }
 
     const payload = (await response.json()) as ShopifySearchSuggestResponse;
-    const products = payload.resources?.results?.products;
-    if (!Array.isArray(products)) {
-      return [];
+    return indexSearchSuggestProducts(payload);
+  };
+
+  const tryFetchSearchSuggestProducts = async (
+    query: string
+  ): Promise<
+    Array<{
+      body: string;
+      handle: string;
+      title: string;
+      url: string;
+    }>
+  > => {
+    try {
+      return await fetchSearchSuggestProducts(query);
+    } catch (error) {
+      if (error instanceof HttpError && error.status === 404) {
+        return [];
+      }
+      throw error;
     }
+  };
+
+  const fetchSearchSuggestCandidates = async (): Promise<
+    ShopifyProductCandidate[]
+  > => {
+    const products = await tryFetchSearchSuggestProducts(
+      template.searchQueryValue
+    );
 
     return products
       .map((product) => ({
         handle: cleanText(product.handle),
+        summaryHtml: cleanText(product.body),
         title: cleanText(product.title),
       }))
       .filter((product) => product.handle && product.title);
+  };
+
+  const getSearchSuggestSupplementalDescription = async (
+    handle: string
+  ): Promise<string> => {
+    const normalizedHandle = cleanText(handle).toLowerCase();
+    if (!normalizedHandle) {
+      return "";
+    }
+
+    const cached = suggestProductByHandle.get(normalizedHandle);
+    if (cached) {
+      return combineUniqueText(cached.title, cached.body);
+    }
+
+    const byHandleResults = await tryFetchSearchSuggestProducts(handle);
+    for (const product of byHandleResults) {
+      if (product.handle.toLowerCase() === normalizedHandle) {
+        return combineUniqueText(product.title, product.body);
+      }
+    }
+
+    const fallbackResults = await tryFetchSearchSuggestProducts(
+      template.searchQueryValue
+    );
+    for (const product of fallbackResults) {
+      if (product.handle.toLowerCase() === normalizedHandle) {
+        return combineUniqueText(product.title, product.body);
+      }
+    }
+
+    return "";
   };
 
   const fetchNextData = async (
@@ -1241,7 +1400,15 @@ export const createShopifyCableSource = (
       return null;
     }
 
-    return buildExtractionResultFromProduct(template, productPath, product);
+    const supplementalDescription =
+      await getSearchSuggestSupplementalDescription(handle);
+
+    return buildExtractionResultFromProduct(
+      template,
+      productPath,
+      product,
+      supplementalDescription
+    );
   };
 
   return {

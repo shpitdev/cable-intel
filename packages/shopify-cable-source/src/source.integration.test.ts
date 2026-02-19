@@ -316,4 +316,24 @@ describe("shopify cable source integration", () => {
       }
     }
   }, 120_000);
+
+  it("recovers wattage from Shopify suggest metadata when product payload is sparse", async () => {
+    const source = createShopifyCableSource(nativeUnionTemplate);
+    const result = await source.extractFromProductUrl(
+      "https://www.nativeunion.com/products/belt-cable-duo"
+    );
+
+    expect(result).not.toBeNull();
+    if (!result) {
+      return;
+    }
+
+    expect(result.cables.length).toBeGreaterThan(0);
+    for (const cable of result.cables) {
+      expect(cable.power.maxWatts).toBe(60);
+      expect(
+        cable.evidence.some((item) => item.fieldPath === "power.maxWatts")
+      ).toBe(true);
+    }
+  }, 120_000);
 });
