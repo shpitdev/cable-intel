@@ -49,6 +49,7 @@ export interface ShopifyExtractionResult {
 
 export interface ShopifyProductCandidate {
   handle: string;
+  summaryHtml?: string;
   title: string;
 }
 
