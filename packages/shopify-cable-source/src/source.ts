@@ -171,6 +171,8 @@ const RESOLUTION_REGEX = /(8K|5K|4K|2K|1080p)/i;
 const REFRESH_RATE_REGEX = /(\d{2,3})\s*Hz\b/i;
 const LIGHTNING_MAX_GBPS = 0.48 as const;
 const LIGHTNING_USB_GENERATION = "USB 2.0 (Lightning ceiling)" as const;
+const VARIANT_LENGTH_HINT_REGEX =
+  /\b(\d+(?:\.\d+)?)\s*(ft|feet|m|cm|mm|in|inch|inches)\b/i;
 const UNKNOWN_BRAND_TOKENS = new Set([
   "",
   "unknown",
@@ -745,17 +747,36 @@ const getHandleFromProductUrl = (
 
 const getVariantLabel = (
   variant: ShopifyVariant,
-  variantCount: number
+  variantCount: number,
+  model: string
 ): string | undefined => {
   const label = cleanText(variant.name);
   const sku = cleanText(variant.sku);
-  if (!label) {
-    return variantCount === 1 ? sku || undefined : undefined;
-  }
-  if (variantCount === 1 && label.toLowerCase() === "default title") {
-    return sku || undefined;
-  }
-  if (label.toLowerCase() === "default title") {
+  const optionLabels = (variant.options ?? [])
+    .flatMap((option) => option.values ?? [])
+    .map((value) => cleanText(value.label ?? value.value))
+    .filter((value) => value && value.toLowerCase() !== "default title");
+  const optionLabel = optionLabels.length > 0 ? optionLabels.join(" / ") : null;
+
+  if (!label || label.toLowerCase() === "default title") {
+    if (optionLabel) {
+      return optionLabel;
+    }
+
+    if (variantCount === 1) {
+      const parenthetical = [...model.matchAll(/\(([^()]{1,48})\)/g)]
+        .map((match) => cleanText(match[1]))
+        .find(Boolean);
+      if (parenthetical) {
+        return parenthetical;
+      }
+      const lengthHint = cleanText(model.match(VARIANT_LENGTH_HINT_REGEX)?.[0]);
+      if (lengthHint) {
+        return lengthHint;
+      }
+      return sku || undefined;
+    }
+
     return undefined;
   }
   return label;
@@ -928,7 +949,11 @@ const buildCableSpecs = (
   context: ProductExtractionContext
 ): ShopifyExtractedCableSpec[] => {
   return context.variants.map((variant) => {
-    const variantLabel = getVariantLabel(variant, context.variants.length);
+    const variantLabel = getVariantLabel(
+      variant,
+      context.variants.length,
+      context.model
+    );
     const power = getVariantPowerCapability(context.power, variantLabel);
     const evidence = buildEvidence(context, {
       power,

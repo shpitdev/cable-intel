@@ -184,7 +184,7 @@ describe("shopify cable source integration", () => {
     }
   }, 120_000);
 
-  it("falls back to SKU when a single Shopify variant is 'Default Title'", async () => {
+  it("uses model hints before SKU fallback when a single variant is 'Default Title'", async () => {
     const source = createShopifyCableSource(ankerTemplate);
     const result = await source.extractFromProductUrl(
       "https://www.anker.com/products/b81a2"
@@ -198,7 +198,8 @@ describe("shopify cable source integration", () => {
     expect(result.cables.length).toBeGreaterThan(0);
     for (const cable of result.cables) {
       expect(cable.sku?.length ?? 0).toBeGreaterThan(0);
-      expect(cable.variant).toBe(cable.sku);
+      expect(cable.variant?.length ?? 0).toBeGreaterThan(0);
+      expect(cable.variant?.toLowerCase()).not.toBe("default title");
     }
   }, 120_000);
 
