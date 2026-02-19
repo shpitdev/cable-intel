@@ -110,9 +110,10 @@ export default defineSchema({
     connectorTo: v.string(),
     productUrl: v.optional(v.string()),
     imageUrls: v.array(v.string()),
-    qualityState: catalogQualityStateValidator,
-    qualityIssues: v.array(v.string()),
-    qualityUpdatedAt: v.number(),
+    // Backward-compatible for existing records created before quality gating.
+    qualityState: v.optional(catalogQualityStateValidator),
+    qualityIssues: v.optional(v.array(v.string())),
+    qualityUpdatedAt: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })

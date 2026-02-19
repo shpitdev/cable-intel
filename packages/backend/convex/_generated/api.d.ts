@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as catalogQuality from "../catalogQuality.js";
 import type * as config from "../config.js";
 import type * as contracts_extraction from "../contracts/extraction.js";
 import type * as healthcheck from "../healthcheck.js";
@@ -22,6 +23,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  catalogQuality: typeof catalogQuality;
   config: typeof config;
   "contracts/extraction": typeof contracts_extraction;
   healthcheck: typeof healthcheck;
