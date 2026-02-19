@@ -1,4 +1,0 @@
-interface:
-  display_name: "Convex Deployment Cleanup"
-  short_description: "Bulk-delete Convex preview deployments safely"
-  default_prompt: "Use $convex-delete-deployments to list and delete Convex preview deployments for a project."
