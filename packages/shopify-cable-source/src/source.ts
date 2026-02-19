@@ -8,6 +8,7 @@ import type {
 
 interface ShopifyOptionValue {
   label?: string;
+  value?: string;
 }
 
 interface ShopifyOption {
@@ -50,6 +51,47 @@ interface ShopifyProduct {
   options?: ShopifyOption[];
   title?: string;
   variants?: ShopifyVariant[];
+  vendor?: string;
+}
+
+interface ShopifySearchSuggestResponse {
+  resources?: {
+    results?: {
+      products?: Array<{
+        handle?: string;
+        title?: string;
+      }>;
+    };
+  };
+}
+
+interface ShopifyProductJsonVariant {
+  available?: boolean;
+  featured_image?: {
+    alt?: string;
+    src?: string;
+  };
+  option1?: string | null;
+  option2?: string | null;
+  option3?: string | null;
+  public_title?: string | null;
+  sku?: string | null;
+  title?: string | null;
+}
+
+interface ShopifyProductJson {
+  body_html?: string;
+  handle?: string;
+  images?: string[];
+  options?: Array<
+    | string
+    | {
+        name?: string;
+        values?: string[];
+      }
+  >;
+  title?: string;
+  variants?: ShopifyProductJsonVariant[];
   vendor?: string;
 }
 
@@ -129,6 +171,14 @@ const RESOLUTION_REGEX = /(8K|5K|4K|2K|1080p)/i;
 const REFRESH_RATE_REGEX = /(\d{2,3})\s*Hz\b/i;
 const LIGHTNING_MAX_GBPS = 0.48 as const;
 const LIGHTNING_USB_GENERATION = "USB 2.0 (Lightning ceiling)" as const;
+const UNKNOWN_BRAND_TOKENS = new Set([
+  "",
+  "unknown",
+  "n/a",
+  "na",
+  "none",
+  "null",
+]);
 
 const stripTags = (value: string): string => {
   return value.replace(/<[^>]+>/g, " ");
@@ -138,8 +188,8 @@ const normalizeWhitespace = (value: string): string => {
   return value.replace(/\s+/g, " ").trim();
 };
 
-const cleanText = (value: string | undefined): string => {
-  if (!value) {
+const cleanText = (value: string | undefined | null): string => {
+  if (typeof value !== "string") {
     return "";
   }
   return normalizeWhitespace(stripTags(value));
@@ -159,6 +209,10 @@ const normalizeBrand = (vendor: string, fallbackBrand: string): string => {
     return cleanedVendor;
   }
   if (!cleanedVendor) {
+    return cleanedFallback;
+  }
+
+  if (UNKNOWN_BRAND_TOKENS.has(cleanedVendor.toLowerCase())) {
     return cleanedFallback;
   }
 
@@ -216,7 +270,10 @@ const dedupeUrls = (urls: readonly string[]): string[] => {
       continue;
     }
     try {
-      const normalized = new URL(trimmed).toString();
+      const withProtocol = trimmed.startsWith("//")
+        ? `https:${trimmed}`
+        : trimmed;
+      const normalized = new URL(withProtocol).toString();
       if (!seen.has(normalized)) {
         seen.add(normalized);
         deduped.push(normalized);
@@ -332,6 +389,72 @@ const getProductFromNextData = (
   return (
     payload.props?.pageProps?.product ?? payload.pageProps?.product ?? null
   );
+};
+
+const toProductJsonVariantLabel = (
+  variant: ShopifyProductJsonVariant
+): string | undefined => {
+  const publicTitle = cleanText(variant.public_title ?? undefined);
+  if (publicTitle && publicTitle.toLowerCase() !== "default title") {
+    return publicTitle;
+  }
+
+  const title = cleanText(variant.title ?? undefined);
+  if (title && title.toLowerCase() !== "default title") {
+    return title;
+  }
+
+  return undefined;
+};
+
+const mapProductJsonToShopifyProduct = (
+  product: ShopifyProductJson
+): ShopifyProduct => {
+  const optionNames = Array.isArray(product.options) ? product.options : [];
+  const variants = Array.isArray(product.variants) ? product.variants : [];
+
+  const mappedVariants: ShopifyVariant[] = variants.map((variant) => {
+    const optionValues = [variant.option1, variant.option2, variant.option3]
+      .map((value) => cleanText(value ?? undefined))
+      .filter(Boolean);
+
+    const mappedOptions: ShopifyOption[] = [];
+    for (const [index, name] of optionNames.entries()) {
+      const optionValue = optionValues[index];
+      if (!optionValue) {
+        continue;
+      }
+      const optionName =
+        typeof name === "string" ? name : cleanText(name?.name);
+      mappedOptions.push({
+        name: cleanText(optionName),
+        values: [{ label: optionValue }],
+      });
+    }
+
+    return {
+      name: toProductJsonVariantLabel(variant),
+      options: mappedOptions,
+      sku: cleanText(variant.sku ?? undefined) || undefined,
+      image: {
+        altText: cleanText(variant.featured_image?.alt),
+        url: cleanText(variant.featured_image?.src),
+      },
+    };
+  });
+
+  return {
+    description: cleanText(product.body_html),
+    descriptionHtml: product.body_html,
+    handle: cleanText(product.handle),
+    images: (product.images ?? []).map((url) => ({
+      url: cleanText(url),
+    })),
+    name: cleanText(product.title),
+    title: cleanText(product.title),
+    variants: mappedVariants,
+    vendor: cleanText(product.vendor),
+  };
 };
 
 const normalizeConnectorToken = (token: string): string | null => {
@@ -871,6 +994,16 @@ export const createShopifyCableSource = (
 ): ShopifyCableSource => {
   let cachedBuildId: string | undefined;
 
+  const isRecoverableNextDataError = (error: unknown): boolean => {
+    if (error instanceof HttpError && error.status === 404) {
+      return true;
+    }
+    if (error instanceof Error) {
+      return error.message.includes("Missing __NEXT_DATA__");
+    }
+    return false;
+  };
+
   const getBuildId = async (): Promise<string> => {
     if (cachedBuildId) {
       return cachedBuildId;
@@ -898,6 +1031,44 @@ export const createShopifyCableSource = (
 
     cachedBuildId = nextData.buildId;
     return cachedBuildId;
+  };
+
+  const fetchSearchSuggestCandidates = async (): Promise<
+    ShopifyProductCandidate[]
+  > => {
+    const suggestUrl = new URL("/search/suggest.json", template.baseUrl);
+    suggestUrl.searchParams.set("q", template.searchQueryValue);
+    suggestUrl.searchParams.set("resources[type]", "product");
+    suggestUrl.searchParams.set("resources[limit]", "250");
+    suggestUrl.searchParams.set(
+      "resources[options][unavailable_products]",
+      "last"
+    );
+
+    const response = await fetch(suggestUrl.toString(), {
+      headers: {
+        accept: "application/json",
+      },
+    });
+    if (!response.ok) {
+      throw new HttpError(
+        `Failed to fetch search suggest endpoint (${response.status})`,
+        response.status
+      );
+    }
+
+    const payload = (await response.json()) as ShopifySearchSuggestResponse;
+    const products = payload.resources?.results?.products;
+    if (!Array.isArray(products)) {
+      return [];
+    }
+
+    return products
+      .map((product) => ({
+        handle: cleanText(product.handle),
+        title: cleanText(product.title),
+      }))
+      .filter((product) => product.handle && product.title);
   };
 
   const fetchNextData = async (
@@ -940,19 +1111,61 @@ export const createShopifyCableSource = (
     }
   };
 
-  const discoverProductUrls = async (maxItems = 200): Promise<string[]> => {
-    const searchParams = new URLSearchParams();
-    searchParams.set(template.searchQueryParam, template.searchQueryValue);
-
-    const searchPayload = await fetchNextData(
-      template.searchPath,
-      searchParams
+  const fetchProductJson = async (
+    handle: string
+  ): Promise<ShopifyProduct | null> => {
+    const productJsonUrl = new URL(
+      `${template.productPathPrefix}${handle}.js`,
+      template.baseUrl
     );
-    const pageProps =
-      searchPayload.props?.pageProps ??
-      searchPayload.pageProps ??
-      searchPayload;
-    const productUrls = collectCandidates(pageProps)
+    const response = await fetch(productJsonUrl.toString(), {
+      headers: {
+        accept: "application/json",
+      },
+    });
+
+    if (response.status === 404) {
+      return null;
+    }
+
+    if (!response.ok) {
+      throw new HttpError(
+        `Failed to fetch Shopify product JSON (${response.status})`,
+        response.status
+      );
+    }
+
+    const payload = (await response.json()) as ShopifyProductJson;
+    return mapProductJsonToShopifyProduct(payload);
+  };
+
+  const discoverProductUrls = async (maxItems = 200): Promise<string[]> => {
+    let candidates: ShopifyProductCandidate[] = [];
+
+    try {
+      const searchParams = new URLSearchParams();
+      searchParams.set(template.searchQueryParam, template.searchQueryValue);
+
+      const searchPayload = await fetchNextData(
+        template.searchPath,
+        searchParams
+      );
+      const pageProps =
+        searchPayload.props?.pageProps ??
+        searchPayload.pageProps ??
+        searchPayload;
+      candidates = collectCandidates(pageProps);
+    } catch (error) {
+      if (!isRecoverableNextDataError(error)) {
+        throw error;
+      }
+    }
+
+    if (candidates.length === 0) {
+      candidates = await fetchSearchSuggestCandidates();
+    }
+
+    const productUrls = candidates
       .filter((candidate) => template.includeCandidate(candidate))
       .map((candidate) => {
         return new URL(
@@ -985,17 +1198,20 @@ export const createShopifyCableSource = (
 
     const productPath = `${template.productPathPrefix}${handle}`;
 
-    let payload: NextDataDocument;
+    let product: ShopifyProduct | null = null;
     try {
-      payload = await fetchNextData(productPath);
+      const payload = await fetchNextData(productPath);
+      product = getProductFromNextData(payload);
     } catch (error) {
-      if (error instanceof HttpError && error.status === 404) {
-        return null;
+      if (!isRecoverableNextDataError(error)) {
+        throw error;
       }
-      throw error;
     }
 
-    const product = getProductFromNextData(payload);
+    if (!product) {
+      product = await fetchProductJson(handle);
+    }
+
     if (!product) {
       return null;
     }

@@ -93,6 +93,29 @@ describe("mapCatalogRowToProfile", () => {
     expect(profile.data.maxGbps).toBe(0.48);
     expect(profile.data.usbGeneration).toContain("USB 2.0");
   });
+
+  it("derives slug title without hardcoding the Anker brand token", () => {
+    const row: CatalogCableRow = {
+      variantId: "variant_native_union",
+      brand: "Native Union",
+      model: "Unknown",
+      variant: "1.5m",
+      sku: "NU-USB-C-001",
+      connectorFrom: "USB-C",
+      connectorTo: "USB-C",
+      productUrl:
+        "https://www.nativeunion.com/products/native-union-belt-cable-usb-c-to-usb-c",
+      imageUrls: [],
+      evidenceRefs: [],
+      power: {},
+      data: {},
+      video: {},
+    };
+
+    const profile = mapCatalogRowToProfile(row);
+
+    expect(profile.displayName).toBe("Belt Cable USB C To USB C");
+  });
 });
 
 describe("buildProfileFromMarkings", () => {

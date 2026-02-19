@@ -3,6 +3,11 @@ import { createShopifyCableSource } from "./source";
 import { shopifyCableTemplates } from "./templates";
 
 const ANKER_TEMPLATE_ID = "anker-us";
+const NATIVE_UNION_TEMPLATE_ID = "native-union";
+const SATECHI_TEMPLATE_ID = "satechi";
+const MOUS_TEMPLATE_ID = "mous";
+const BASEUS_TEMPLATE_ID = "baseus";
+const UGREEN_TEMPLATE_ID = "ugreen";
 const LIGHTNING_MAX_GBPS = 0.48 as const;
 const LIGHTNING_USB_GENERATION_FRAGMENT = "USB 2.0" as const;
 const EXPECTED_BRAND = "Anker";
@@ -12,6 +17,46 @@ const ankerTemplate = shopifyCableTemplates.find((template) => {
 
 if (!ankerTemplate) {
   throw new Error("Missing Anker Shopify template");
+}
+
+const nativeUnionTemplate = shopifyCableTemplates.find((template) => {
+  return template.id === NATIVE_UNION_TEMPLATE_ID;
+});
+
+if (!nativeUnionTemplate) {
+  throw new Error("Missing Native Union Shopify template");
+}
+
+const satechiTemplate = shopifyCableTemplates.find((template) => {
+  return template.id === SATECHI_TEMPLATE_ID;
+});
+
+if (!satechiTemplate) {
+  throw new Error("Missing Satechi Shopify template");
+}
+
+const mousTemplate = shopifyCableTemplates.find((template) => {
+  return template.id === MOUS_TEMPLATE_ID;
+});
+
+if (!mousTemplate) {
+  throw new Error("Missing Mous Shopify template");
+}
+
+const baseusTemplate = shopifyCableTemplates.find((template) => {
+  return template.id === BASEUS_TEMPLATE_ID;
+});
+
+if (!baseusTemplate) {
+  throw new Error("Missing Baseus Shopify template");
+}
+
+const ugreenTemplate = shopifyCableTemplates.find((template) => {
+  return template.id === UGREEN_TEMPLATE_ID;
+});
+
+if (!ugreenTemplate) {
+  throw new Error("Missing UGREEN Shopify template");
 }
 
 describe("shopify cable source integration", () => {
@@ -212,6 +257,62 @@ describe("shopify cable source integration", () => {
       expect(
         cable.evidence.some((item) => item.fieldPath === "power.maxWatts")
       ).toBe(true);
+    }
+  }, 120_000);
+
+  it("extracts cable variants for additional Shopify cable brands", async () => {
+    const cases = [
+      {
+        minVariants: 2,
+        template: nativeUnionTemplate,
+        url: "https://www.nativeunion.com/products/belt-cable-2-in-1-usb-c-to-usb-c-usb-c-cable-140w",
+      },
+      {
+        minVariants: 1,
+        template: satechiTemplate,
+        url: "https://satechi.com/products/thunderbolt-5-pro-cable",
+      },
+      {
+        minVariants: 2,
+        template: mousTemplate,
+        url: "https://www.mous.co/products/usb-c-to-usb-c-charging-cable",
+      },
+      {
+        minVariants: 3,
+        template: baseusTemplate,
+        url: "https://www.baseus.com/products/usb-c-to-usb-c-cable-100w",
+      },
+      {
+        minVariants: 1,
+        template: ugreenTemplate,
+        url: "https://www.ugreen.com/products/usa-90440",
+      },
+    ];
+
+    for (const entry of cases) {
+      const source = createShopifyCableSource(entry.template);
+      const result = await source.extractFromProductUrl(entry.url);
+
+      expect(result).not.toBeNull();
+      if (!result) {
+        continue;
+      }
+
+      expect(result.cables.length).toBeGreaterThanOrEqual(entry.minVariants);
+      for (const cable of result.cables) {
+        expect(cable.brand.length).toBeGreaterThan(0);
+        expect(cable.brand.toLowerCase()).not.toBe("n/a");
+        expect(cable.model.length).toBeGreaterThan(0);
+        expect(cable.connectorPair.from.length).toBeGreaterThan(0);
+        expect(cable.connectorPair.to.length).toBeGreaterThan(0);
+        expect(cable.images.length).toBeGreaterThan(0);
+        expect(cable.evidence.some((item) => item.fieldPath === "brand")).toBe(
+          true
+        );
+        expect(cable.evidence.some((item) => item.fieldPath === "model")).toBe(
+          true
+        );
+      }
     }
   }, 120_000);
 });
