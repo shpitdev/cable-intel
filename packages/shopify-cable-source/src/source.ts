@@ -177,6 +177,7 @@ const LIGHTNING_MAX_GBPS = 0.48 as const;
 const LIGHTNING_USB_GENERATION = "USB 2.0 (Lightning ceiling)" as const;
 const VARIANT_LENGTH_HINT_REGEX =
   /\b(\d+(?:\.\d+)?)\s*(ft|feet|m|cm|mm|in|inch|inches)\b/i;
+const FETCH_TIMEOUT_MS = 25_000;
 const UNKNOWN_BRAND_TOKENS = new Set([
   "",
   "unknown",
@@ -321,6 +322,23 @@ const dedupeUrls = (urls: readonly string[]): string[] => {
     }
   }
   return deduped;
+};
+
+const fetchWithTimeout = async (
+  url: string,
+  init?: RequestInit
+): Promise<Response> => {
+  try {
+    return await fetch(url, {
+      ...init,
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === "TimeoutError") {
+      throw new Error(`Timed out fetching Shopify endpoint: ${url}`);
+    }
+    throw error;
+  }
 };
 
 const getSnippet = (
@@ -1101,7 +1119,7 @@ export const createShopifyCableSource = (
       template.searchQueryValue
     );
 
-    const response = await fetch(searchUrl.toString());
+    const response = await fetchWithTimeout(searchUrl.toString());
     if (!response.ok) {
       throw new HttpError(
         `Failed to fetch search page (${response.status})`,
@@ -1185,7 +1203,7 @@ export const createShopifyCableSource = (
       "last"
     );
 
-    const response = await fetch(suggestUrl.toString(), {
+    const response = await fetchWithTimeout(suggestUrl.toString(), {
       headers: {
         accept: "application/json",
       },
@@ -1334,7 +1352,7 @@ export const createShopifyCableSource = (
         nextDataUrl.search = searchParams.toString();
       }
 
-      const response = await fetch(nextDataUrl.toString());
+      const response = await fetchWithTimeout(nextDataUrl.toString());
       if (!response.ok) {
         throw new HttpError(
           `Failed to fetch Next data (${response.status}) for ${pathname}`,
@@ -1366,7 +1384,7 @@ export const createShopifyCableSource = (
       `${template.productPathPrefix}${handle}.js`,
       template.baseUrl
     );
-    const response = await fetch(productJsonUrl.toString(), {
+    const response = await fetchWithTimeout(productJsonUrl.toString(), {
       headers: {
         accept: "application/json",
       },
