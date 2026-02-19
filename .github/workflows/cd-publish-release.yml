@@ -6,6 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: write
   contents: write
 
 concurrency:
@@ -56,3 +57,13 @@ jobs:
             --title "Release $TAG" \
             --generate-notes \
             --target "$GITHUB_SHA"
+
+      - name: Trigger TUI release bundle workflow
+        if: steps.release_exists.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="v${{ steps.version.outputs.value }}"
+          gh workflow run tui-release \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref "$TAG"
