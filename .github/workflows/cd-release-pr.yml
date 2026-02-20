@@ -106,4 +106,5 @@ jobs:
           gh pr merge "${{ steps.bump_pr.outputs.pr_url }}" \
             --repo "$GITHUB_REPOSITORY" \
             --squash \
-            --auto
+            --auto \
+            --delete-branch
