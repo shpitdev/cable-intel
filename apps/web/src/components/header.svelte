@@ -14,9 +14,18 @@
 
 <header class="top-nav">
   <div class="top-nav-inner">
-    <a href="/" class="block">
-      <p class="brand-title">Cable Intel</p>
-      <p class="brand-subtitle">Find cables without guesswork</p>
+    <a href="/" class="brand-link">
+      <img
+        src="/cable-intel-shield-usbc-transparent-teal-white.png"
+        alt="Cable Intel shield logo"
+        class="brand-logo"
+        width="36"
+        height="36"
+      >
+      <div class="brand-copy">
+        <p class="brand-title">Cable Intel</p>
+        <p class="brand-subtitle">Find cables without guesswork</p>
+      </div>
     </a>
 
     <div class="top-nav-controls">

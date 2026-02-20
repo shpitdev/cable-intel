@@ -95,6 +95,25 @@ a {
   min-width: 0;
 }
 
+.brand-link {
+  display: inline-flex;
+  gap: 0.62rem;
+  align-items: center;
+  text-decoration: none;
+}
+
+.brand-logo {
+  display: block;
+  flex-shrink: 0;
+  width: 2.1rem;
+  height: 2.1rem;
+  border-radius: 0.64rem;
+}
+
+.brand-copy {
+  min-width: 0;
+}
+
 .brand-title {
   font-size: 0.98rem;
   font-weight: 700;
