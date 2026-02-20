@@ -1,138 +1,150 @@
-# Ultracite Code Standards
+# Agent Guide (Ultracite + Autonomy + Data Quality)
 
-This project uses **Ultracite**, a zero-config preset that enforces strict code quality standards through automated formatting and linting.
+This repo uses **Ultracite** (Biome) for formatting + linting. Prefer simple, explicit code and keep the project easy to change.
 
-## Quick Reference
+## Quick commands
 
-- **Format code**: `bun x ultracite fix`
-- **Check for issues**: `bun x ultracite check`
-- **Diagnose setup**: `bun x ultracite doctor`
-
-Biome (the underlying engine) provides robust linting and formatting. Most issues are automatically fixable.
+- **Format + fix**: `bun x ultracite fix`
+- **Check (CI-style)**: `bun x ultracite check`
+- **Diagnose tooling**: `bun x ultracite doctor`
 
 ---
 
-## Core Principles
+## Operating principles (what “good” looks like)
 
-Write code that is **accessible, performant, type-safe, and maintainable**. Focus on clarity and explicit intent over brevity.
+1. **Ship maintainable changes**: clear intent, low cognitive load, type-safe, accessible, secure.
+2. **Prefer deletion over preservation**: if you refactor, remove old paths. Avoid keeping parallel implementations.
+3. **Make progress autonomously**: don’t stop at “requested change done” if there’s an obvious adjacent technical completion.
+4. **Be honest about uncertainty**: when you can’t confirm something, say so and add checks/logging/tests rather than guessing.
+5. **Data quality is a first-class feature**: if the system pulls from sources, treat correctness and provenance as requirements.
 
-### Type Safety & Explicitness
+---
 
-- Use explicit types for function parameters and return values when they enhance clarity
-- Prefer `unknown` over `any` when the type is genuinely unknown
-- Use const assertions (`as const`) for immutable values and literal types
-- Leverage TypeScript's type narrowing instead of type assertions
-- Use meaningful variable names instead of magic numbers - extract constants with descriptive names
+## Autonomy rules (default behavior)
 
-### Modern JavaScript/TypeScript
+You should proceed without asking for confirmation when the work is:
 
-- Use arrow functions for callbacks and short functions
-- Prefer `for...of` loops over `.forEach()` and indexed `for` loops
-- Use optional chaining (`?.`) and nullish coalescing (`??`) for safer property access
-- Prefer template literals over string concatenation
-- Use destructuring for object and array assignments
-- Use `const` by default, `let` only when reassignment is needed, never `var`
+- A clear bug fix, type-safety improvement, or dead-code removal
+- A refactor that *reduces* complexity and deletes the old version
+- Adding missing tests, assertions, or validation needed to make existing behavior reliable
+- Improving observability (structured logs/metrics) to verify behavior
+- Tightening security defaults (e.g., `rel="noopener"` on external links)
 
-### Async & Promises
+You must ask before:
 
-- Always `await` promises in async functions - don't forget to use the return value
-- Use `async/await` syntax instead of promise chains for better readability
-- Handle errors appropriately in async code with try-catch blocks
-- Don't use async functions as Promise executors
+- Introducing a new feature that isn’t implied by existing code or we haven’t discussed as needed/valuable
+- Making a large dependency addition or major architectural change
 
-### React & JSX
+After completing a task, do one more pass:
+- Identify the next highest-leverage cleanup directly related to the change and do it (unless it would change behavior).
 
-- Use function components over class components
-- Call hooks at the top level only, never conditionally
-- Specify all dependencies in hook dependency arrays correctly
-- Use the `key` prop for elements in iterables (prefer unique IDs over array indices)
-- Nest children between opening and closing tags instead of passing as props
-- Don't define components inside other components
-- Use semantic HTML and ARIA attributes for accessibility:
-  - Provide meaningful alt text for images
-  - Use proper heading hierarchy
-  - Add labels for form inputs
-  - Include keyboard event handlers alongside mouse events
-  - Use semantic elements (`<button>`, `<nav>`, etc.) instead of divs with roles
+---
 
-### Error Handling & Debugging
+## Core engineering standards (trimmed)
 
-- Remove `console.log`, `debugger`, and `alert` statements from production code
-- Throw `Error` objects with descriptive messages, not strings or other values
-- Use `try-catch` blocks meaningfully - don't catch errors just to rethrow them
-- Prefer early returns over nested conditionals for error cases
+### TypeScript / JavaScript
 
-### Code Organization
+- Use `const` by default; `let` only when reassignment is required.
+- Prefer `unknown` over `any`; narrow with guards instead of assertions.
+- Use `as const` for literal/immutable objects when it improves types.
+- Prefer `for...of` for loops with side effects; avoid accumulator spreads in hot paths.
+- Avoid cleverness; name things clearly and extract magic numbers into constants.
 
-- Keep functions focused and under reasonable cognitive complexity limits
-- Extract complex conditions into well-named boolean variables
-- Use early returns to reduce nesting
-- Prefer simple conditionals over nested ternary operators
-- Group related code together and separate concerns
+### Async / errors
+
+- Always `await` promises you create or call in `async` functions.
+- Use `try/catch` where you can add meaning: context, fallback, or cleanup.
+- Throw `Error` objects with descriptive messages (include key identifiers).
+- Fail fast with early returns to reduce nesting.
 
 ### Security
 
-- Add `rel="noopener"` when using `target="_blank"` on links
-- Avoid `dangerouslySetInnerHTML` unless absolutely necessary
-- Don't use `eval()` or assign directly to `document.cookie`
-- Validate and sanitize user input
+- Add `rel="noopener"` for `target="_blank"`.
+- Don’t use `eval()`.
+- Validate and sanitize external input (network, files, env vars, user input).
+- Avoid `dangerouslySetInnerHTML` unless absolutely necessary and justified.
 
-### Performance
+### Performance (practical)
 
-- Avoid spread syntax in accumulators within loops
-- Use top-level regex literals instead of creating them in loops
-- Prefer specific imports over namespace imports
-- Avoid barrel files (index files that re-export everything)
-- Use proper image components (e.g., Next.js `<Image>`) over `<img>` tags
+- Don’t allocate in tight loops unnecessarily.
+- Use top-level regex literals (don’t build regexes repeatedly in loops).
+- Prefer specific imports over namespace imports when reasonable.
 
-### Framework-Specific Guidance
+### React / Next.js (when applicable)
 
-**Next.js:**
+- Function components only; hooks at top-level only.
+- Use semantic HTML + accessible labels/alt text; keyboard support with mouse handlers.
+- Next.js: prefer `<Image>` for images; use appropriate metadata APIs for head content.
+- Avoid defining components inside components.
 
-- Use Next.js `<Image>` component for images
-- Use `next/head` or App Router metadata API for head elements
-- Use Server Components for async data fetching instead of async Client Components
+### Testing
 
-**React 19+:**
-
-- Use ref as a prop instead of `React.forwardRef`
-
-**Solid/Svelte/Vue/Qwik:**
-
-- Use `class` and `for` attributes (not `className` or `htmlFor`)
+- Put assertions inside `test()`/`it()` blocks.
+- Use `async/await` (no `done` callbacks).
+- Never commit `.only`/`.skip`.
+- Keep suites flat; test behavior and edge cases, not implementation trivia.
 
 ---
 
-## Testing
+## Data quality & provenance (required)
 
-- Write assertions inside `it()` or `test()` blocks
-- Avoid done callbacks in async tests - use async/await instead
-- Don't use `.only` or `.skip` in committed code
-- Keep test suites reasonably flat - avoid excessive `describe` nesting
+Any code that **ingests, scrapes, syncs, or transforms external data** must include:
 
-## When Biome Can't Help
+- **Provenance**: where the data came from (source URL/system, timestamp, identifiers).
+- **Normalization**: deterministic transforms (documented and testable).
+- **Validation**: schema/shape checks and constraints (reject or quarantine bad data).
+- **Traceability**: ability to map a stored field back to a source attribute.
 
-Biome's linter will catch most issues automatically. Focus your attention on:
+### Visual grading (always include in PRs / summaries)
 
-1. **Business logic correctness** - Biome can't validate your algorithms
-2. **Meaningful naming** - Use descriptive names for functions, variables, and types
-3. **Architecture decisions** - Component structure, data flow, and API design
-4. **Edge cases** - Handle boundary conditions and error states
-5. **User experience** - Accessibility, performance, and usability considerations
-6. **Documentation** - Add comments for complex logic, but prefer self-documenting code
+When you touch data ingestion, parsing, or derived fields, include a **Data Quality Grade** using this rubric:
+
+- **A**: strong provenance + robust validation + idempotent transforms + good coverage/monitoring
+- **B**: provenance + basic validation; some edge cases known but bounded
+- **C**: partial provenance or weak validation; correctness depends on assumptions
+- **D**: brittle parsing, unclear provenance, or frequent silent fallbacks
+- **F**: unvalidated/untraceable data or behavior that can silently corrupt outputs
+
+Alongside the grade, include:
+
+1. **Source(s)**: what you pull from and why it’s authoritative
+2. **Assumptions**: explicit assumptions about the source format/semantics
+3. **Failure modes**: what happens on missing/invalid/changed source data
+4. **Detection**: how issues are surfaced (logs/metrics/tests) vs silently ignored
+5. **Backfill/replay** (if relevant): can you re-run deterministically without duplication?
+
+### “Compare to source” checklist (do this before you call it done)
+
+- [ ] Sampled real source payloads/records and compared derived fields
+- [ ] Verified units/timezones/encodings and identifier stability
+- [ ] Confirmed null/empty/unknown semantics (don’t coerce silently)
+- [ ] Added at least one guardrail: schema validation, invariant checks, or tests
+- [ ] Logged/flagged anomalies with enough context to debug (no noisy spam)
+
+If you can’t verify against the source (no access / no sample data), say so clearly and:
+- add validation + logging to detect drift,
+- add tests using representative fixtures,
+- grade no higher than **C**.
 
 ---
 
-Most formatting and common issues are automatically fixed by Biome. Run `bun x ultracite fix` before committing to ensure compliance.
+## Workflow (lightweight)
+
+- Prefer small, coherent commits.
+- Keep branches tidy; delete stale branches.
+- Keep required checks fast and merge-critical; rely on auto-merge when enabled.
+- Before finalizing: run `bun x ultracite fix`, then `bun x ultracite check`.
 
 ---
 
-## Collaboration Workflow
+## When tooling can’t help
 
-- Commit as you go in small logical commits (focused scope, clear message).
-- Prefer multiple small commits over one large commit when implementing a feature.
-- Open PRs that bundle complete, reviewable functionality once the full unit of work is done.
-- Push progress regularly at stable stopping points so work is recoverable and reviewable.
-- Keep branch protection aligned with this workflow: required status checks must be merge-critical and fast.
-- Do not manually merge early; let required checks complete and rely on auto-merge.
-- If checks fail, keep iterating in the PR until all required checks are green.
+Formatters and linters can’t ensure:
+- business correctness,
+- good naming,
+- sound architecture,
+- correct edge-case handling,
+- good UX/accessibility,
+- data correctness vs the real source.
+
+Prioritize those over micro-style debates.
