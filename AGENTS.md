@@ -137,6 +137,16 @@ If you can’t verify against the source (no access / no sample data), say so cl
 
 ---
 
+## Git decision policy
+
+- Do not ask the user about routine git nuance.
+- Analyze impact first: inspect working tree, commit content, branch state, and CI/merge requirements.
+- After analysis, choose the safest correct git action and execute it.
+- Default to autonomous git handling (branching, rebasing/merging, pushing, PR updates, and enabling auto-merge) unless the action is destructive.
+- Only interrupt for explicit destructive-risk operations or conflicting product intent that cannot be resolved from repo context.
+
+---
+
 ## When tooling can’t help
 
 Formatters and linters can’t ensure:
