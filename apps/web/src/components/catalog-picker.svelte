@@ -178,23 +178,8 @@
       }
     }
 
-    for (const group of grouped.values()) {
-      group.variants.sort((left, right) => {
-        const leftLabel = getVariantLabel(left).toLowerCase();
-        const rightLabel = getVariantLabel(right).toLowerCase();
-        return leftLabel.localeCompare(rightLabel);
-      });
-    }
-
-    return [...grouped.values()].sort((left, right) => {
-      const leftPrimary = left.variants[0];
-      const rightPrimary = right.variants[0];
-      const leftTitle = leftPrimary ? getTitle(leftPrimary).toLowerCase() : "";
-      const rightTitle = rightPrimary
-        ? getTitle(rightPrimary).toLowerCase()
-        : "";
-      return leftTitle.localeCompare(rightTitle);
-    });
+    // Keep backend-ranked order so search intent (brand/connector/power) stays visible.
+    return [...grouped.values()];
   });
 
   const getPrimaryVariant = (group: CatalogGroup): CableProfile | null => {

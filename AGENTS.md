@@ -158,3 +158,14 @@ Formatters and linters can’t ensure:
 - data correctness vs the real source.
 
 Prioritize those over micro-style debates.
+
+
+## Memory
+
+- Use `.memory/` directory to store any temporary artifacts.
+- This directory is gitignored, so it will not be committed to the repository, but it is intentionally configured to be visible to codex.
+
+
+## web browsing and running dev server
+- Use `agent-browser` or antigravity browser to browse the web, take screenshots, etc..
+- d3k is a tool that can be used to run the dev server and see the ouput of console logs, server logs, etc.. in 1 unified view. you should always run the dev server and validate the app to reproduce issues and verify fixes.

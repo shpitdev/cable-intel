@@ -391,6 +391,554 @@ const dedupeRowsByBrandSku = (rows: TopCableRow[]): TopCableRow[] => {
   });
 };
 
+const SEARCH_TOKEN_REGEX = /[a-z0-9]+/g;
+const SEARCH_NORMALIZE_REGEX = /[^a-z0-9]+/g;
+const USB_C_WORD_REGEX = /\busb c\b/;
+const TYPE_C_WORD_REGEX = /\btype c\b/;
+const USB_A_WORD_REGEX = /\busb a\b/;
+const MICRO_USB_WORD_REGEX = /\bmicro usb\b/;
+const THUNDERBOLT_WORD_REGEX = /\bthunderbolt\b/;
+const TB_WORD_REGEX = /\btb\b/;
+const CONNECTOR_PAIR_REGEX =
+  /\b(usbc|usb[\s-]*c|type[\s-]*c|usba|usb[\s-]*a|lightning|micro[\s-]*usb|microusb|c|a|m)\b\s*(?:to|->|\/)\s*\b(usbc|usb[\s-]*c|type[\s-]*c|usba|usb[\s-]*a|lightning|micro[\s-]*usb|microusb|c|a|m)\b/i;
+const CONNECTOR_MENTION_PATTERNS = [
+  {
+    connector: "usbc",
+    regex: /\busbc\b|\busb[\s-]*c\b|\btype[\s-]*c\b/i,
+  },
+  {
+    connector: "usba",
+    regex: /\busba\b|\busb[\s-]*a\b/i,
+  },
+  {
+    connector: "lightning",
+    regex: /\blightning\b/i,
+  },
+  {
+    connector: "microusb",
+    regex: /\bmicrousb\b|\bmicro[\s-]*usb\b/i,
+  },
+] as const;
+const WATTS_REGEX = /\b(\d{2,3})\s*w\b|\b(\d{2,3})w\b/gi;
+
+type ConnectorKey = "lightning" | "microusb" | "usba" | "usbc";
+
+interface ParsedCatalogSearchQuery {
+  brandHint?: string;
+  connectorHints: ConnectorKey[];
+  connectorPair?: {
+    from: ConnectorKey;
+    to: ConnectorKey;
+  };
+  normalized: string;
+  requestedWatts?: number;
+  tokens: string[];
+}
+
+interface RowSearchIndex {
+  brandToken: string;
+  connectorFrom: ConnectorKey | undefined;
+  connectorTo: ConnectorKey | undefined;
+  searchableText: string;
+  tokenSet: Set<string>;
+  tokens: string[];
+}
+
+const normalizeSearchText = (value: string): string => {
+  return value
+    .toLowerCase()
+    .replace(SEARCH_NORMALIZE_REGEX, " ")
+    .replaceAll(/\s+/g, " ")
+    .trim();
+};
+
+const toConnectorKey = (value?: string): ConnectorKey | undefined => {
+  const normalized = value
+    ?.toLowerCase()
+    .replaceAll(/[^a-z0-9]+/g, "")
+    .trim();
+  if (!normalized) {
+    return undefined;
+  }
+  if (normalized === "usbc" || normalized === "typec" || normalized === "c") {
+    return "usbc";
+  }
+  if (normalized === "usba" || normalized === "a") {
+    return "usba";
+  }
+  if (normalized === "lightning") {
+    return "lightning";
+  }
+  if (
+    normalized === "microusb" ||
+    normalized === "micro" ||
+    normalized === "m"
+  ) {
+    return "microusb";
+  }
+  return undefined;
+};
+
+const extractSearchTokens = (value: string): string[] => {
+  const normalized = normalizeSearchText(value);
+  const baseTokens = normalized.match(SEARCH_TOKEN_REGEX) ?? [];
+  const tokens = new Set(baseTokens.filter((token) => token.length >= 2));
+
+  if (USB_C_WORD_REGEX.test(normalized) || TYPE_C_WORD_REGEX.test(normalized)) {
+    tokens.add("usbc");
+  }
+  if (USB_A_WORD_REGEX.test(normalized)) {
+    tokens.add("usba");
+  }
+  if (MICRO_USB_WORD_REGEX.test(normalized)) {
+    tokens.add("microusb");
+  }
+  if (
+    THUNDERBOLT_WORD_REGEX.test(normalized) ||
+    TB_WORD_REGEX.test(normalized)
+  ) {
+    tokens.add("thunderbolt");
+    tokens.add("tb");
+  }
+
+  return [...tokens];
+};
+
+const isSingleTransposition = (left: string, right: string): boolean => {
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  const mismatches: number[] = [];
+  for (let index = 0; index < left.length; index += 1) {
+    if (left[index] !== right[index]) {
+      mismatches.push(index);
+      if (mismatches.length > 2) {
+        return false;
+      }
+    }
+  }
+
+  if (mismatches.length !== 2) {
+    return false;
+  }
+  const [first, second] = mismatches;
+  if (first === undefined || second === undefined) {
+    return false;
+  }
+  return left[first] === right[second] && left[second] === right[first];
+};
+
+const isEditDistanceAtMostOne = (left: string, right: string): boolean => {
+  if (Math.abs(left.length - right.length) > 1) {
+    return false;
+  }
+
+  let leftIndex = 0;
+  let rightIndex = 0;
+  let edits = 0;
+
+  while (leftIndex < left.length && rightIndex < right.length) {
+    if (left[leftIndex] === right[rightIndex]) {
+      leftIndex += 1;
+      rightIndex += 1;
+      continue;
+    }
+
+    edits += 1;
+    if (edits > 1) {
+      return false;
+    }
+
+    if (left.length > right.length) {
+      leftIndex += 1;
+      continue;
+    }
+    if (right.length > left.length) {
+      rightIndex += 1;
+      continue;
+    }
+
+    leftIndex += 1;
+    rightIndex += 1;
+  }
+
+  if (leftIndex < left.length || rightIndex < right.length) {
+    edits += 1;
+  }
+
+  return edits <= 1;
+};
+
+const isNearSearchTokenMatch = (left: string, right: string): boolean => {
+  if (left === right) {
+    return true;
+  }
+
+  if (left.length < 3 || right.length < 3) {
+    return false;
+  }
+
+  if (left.startsWith(right) || right.startsWith(left)) {
+    return true;
+  }
+
+  if (isSingleTransposition(left, right)) {
+    return true;
+  }
+
+  return isEditDistanceAtMostOne(left, right);
+};
+
+const extractConnectorPair = (
+  rawQuery: string
+):
+  | {
+      from: ConnectorKey;
+      to: ConnectorKey;
+    }
+  | undefined => {
+  const pairMatch = rawQuery.match(CONNECTOR_PAIR_REGEX);
+  if (!pairMatch) {
+    return undefined;
+  }
+  const [, rawFrom, rawTo] = pairMatch;
+  const from = toConnectorKey(rawFrom);
+  const to = toConnectorKey(rawTo);
+  if (!(from && to)) {
+    return undefined;
+  }
+
+  return {
+    from,
+    to,
+  };
+};
+
+const extractConnectorHints = (rawQuery: string): ConnectorKey[] => {
+  const hints = new Set<ConnectorKey>();
+  for (const pattern of CONNECTOR_MENTION_PATTERNS) {
+    if (pattern.regex.test(rawQuery)) {
+      hints.add(pattern.connector);
+    }
+  }
+  return [...hints];
+};
+
+const extractRequestedWatts = (rawQuery: string): number | undefined => {
+  const matches = rawQuery.matchAll(WATTS_REGEX);
+  const values: number[] = [];
+  for (const match of matches) {
+    const rawValue = match[1] ?? match[2];
+    if (!rawValue) {
+      continue;
+    }
+    const parsed = Number(rawValue);
+    if (!Number.isFinite(parsed)) {
+      continue;
+    }
+    values.push(parsed);
+  }
+
+  if (values.length === 0) {
+    return undefined;
+  }
+  return Math.max(...values);
+};
+
+const detectBrandHint = (
+  queryTokens: string[],
+  rows: TopCableRow[]
+): string | undefined => {
+  const knownBrands = new Set<string>();
+  for (const row of rows) {
+    const normalizedBrand = normalizeBrandToken(row.brand);
+    if (!normalizedBrand) {
+      continue;
+    }
+    knownBrands.add(normalizedBrand);
+  }
+
+  let bestMatch:
+    | {
+        brand: string;
+        score: number;
+      }
+    | undefined;
+
+  for (const token of queryTokens) {
+    for (const brand of knownBrands) {
+      let score = 0;
+      if (token === brand) {
+        score = 3;
+      } else if (isNearSearchTokenMatch(token, brand)) {
+        score = 2;
+      }
+
+      if (score === 0) {
+        continue;
+      }
+
+      if (
+        !bestMatch ||
+        score > bestMatch.score ||
+        (score === bestMatch.score && brand.length > bestMatch.brand.length)
+      ) {
+        bestMatch = {
+          brand,
+          score,
+        };
+      }
+    }
+  }
+
+  return bestMatch?.brand;
+};
+
+const parseCatalogSearchQuery = (
+  query: string,
+  rows: TopCableRow[]
+): ParsedCatalogSearchQuery => {
+  const normalized = normalizeSearchText(query);
+  const tokens = extractSearchTokens(query);
+  const rawLower = query.toLowerCase();
+  const connectorPair = extractConnectorPair(rawLower);
+  const connectorHints = extractConnectorHints(rawLower);
+
+  if (connectorPair) {
+    connectorHints.push(connectorPair.from, connectorPair.to);
+  }
+
+  const uniqueConnectorHints = [...new Set(connectorHints)];
+
+  return {
+    normalized,
+    tokens,
+    connectorPair,
+    connectorHints: uniqueConnectorHints,
+    requestedWatts: extractRequestedWatts(rawLower),
+    brandHint: detectBrandHint(tokens, rows),
+  };
+};
+
+const buildRowSearchIndex = (row: TopCableRow): RowSearchIndex => {
+  const fields = [
+    row.brand,
+    row.model,
+    row.variant,
+    row.sku,
+    row.productUrl,
+    row.connectorFrom,
+    row.connectorTo,
+    row.power.maxWatts ? `${row.power.maxWatts}w` : undefined,
+    row.data.usbGeneration,
+    row.data.maxGbps ? `${row.data.maxGbps}gbps` : undefined,
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const tokens = extractSearchTokens(fields);
+
+  return {
+    brandToken: normalizeBrandToken(row.brand),
+    connectorFrom: toConnectorKey(row.connectorFrom),
+    connectorTo: toConnectorKey(row.connectorTo),
+    searchableText: normalizeSearchText(fields),
+    tokens,
+    tokenSet: new Set(tokens),
+  };
+};
+
+const scoreBrandMatch = (
+  index: RowSearchIndex,
+  parsedQuery: ParsedCatalogSearchQuery
+): number => {
+  const brandHint = parsedQuery.brandHint;
+  if (!brandHint) {
+    return 0;
+  }
+
+  if (index.brandToken === brandHint) {
+    return 95;
+  }
+
+  if (isNearSearchTokenMatch(index.brandToken, brandHint)) {
+    return 70;
+  }
+
+  return -8;
+};
+
+const scoreConnectorMatch = (
+  index: RowSearchIndex,
+  parsedQuery: ParsedCatalogSearchQuery
+): number => {
+  const rowFrom = index.connectorFrom;
+  const rowTo = index.connectorTo;
+  if (!(rowFrom && rowTo)) {
+    return 0;
+  }
+
+  const pair = parsedQuery.connectorPair;
+  if (pair) {
+    if (rowFrom === pair.from && rowTo === pair.to) {
+      return 140;
+    }
+    if (rowFrom === pair.to && rowTo === pair.from) {
+      return 120;
+    }
+
+    const rowSet = new Set([rowFrom, rowTo]);
+    const matchedCount = [pair.from, pair.to].filter((connector) =>
+      rowSet.has(connector)
+    ).length;
+    return matchedCount * 24;
+  }
+
+  if (parsedQuery.connectorHints.length === 0) {
+    return 0;
+  }
+
+  const rowSet = new Set([rowFrom, rowTo]);
+  const matchedCount = parsedQuery.connectorHints.filter((connector) =>
+    rowSet.has(connector)
+  ).length;
+  return matchedCount * 24;
+};
+
+const scorePowerMatch = (
+  row: TopCableRow,
+  parsedQuery: ParsedCatalogSearchQuery
+): number => {
+  const requestedWatts = parsedQuery.requestedWatts;
+  if (!requestedWatts) {
+    return 0;
+  }
+
+  const maxWatts = row.power.maxWatts;
+  if (typeof maxWatts !== "number") {
+    return -6;
+  }
+
+  const delta = Math.abs(maxWatts - requestedWatts);
+  if (delta === 0) {
+    return 90;
+  }
+
+  if (maxWatts >= requestedWatts) {
+    return Math.max(20, 70 - delta);
+  }
+
+  return Math.max(0, 40 - delta);
+};
+
+const scoreLexicalMatch = (
+  index: RowSearchIndex,
+  parsedQuery: ParsedCatalogSearchQuery
+): number => {
+  let score = 0;
+  for (const token of parsedQuery.tokens) {
+    if (index.tokenSet.has(token)) {
+      score += token.length >= 4 ? 10 : 7;
+      continue;
+    }
+
+    const hasPrefixMatch = index.tokens.some((rowToken) => {
+      return (
+        rowToken.startsWith(token) ||
+        (token.length >= 3 && token.startsWith(rowToken))
+      );
+    });
+    if (hasPrefixMatch) {
+      score += 4;
+      continue;
+    }
+
+    if (token.length < 4) {
+      continue;
+    }
+
+    const hasNearMatch = index.tokens.some((rowToken) => {
+      return isNearSearchTokenMatch(token, rowToken);
+    });
+    if (hasNearMatch) {
+      score += 4;
+    }
+  }
+
+  if (
+    parsedQuery.normalized &&
+    index.searchableText.includes(parsedQuery.normalized)
+  ) {
+    score += 20;
+  }
+
+  return score;
+};
+
+const scoreRowForSearch = (
+  row: TopCableRow,
+  index: RowSearchIndex,
+  parsedQuery: ParsedCatalogSearchQuery
+): number => {
+  const qualityScore = row.qualityState === "ready" ? 12 : 0;
+  const completenessScore = scoreTopCableRow(row);
+
+  return (
+    scoreBrandMatch(index, parsedQuery) +
+    scoreConnectorMatch(index, parsedQuery) +
+    scorePowerMatch(row, parsedQuery) +
+    scoreLexicalMatch(index, parsedQuery) +
+    qualityScore +
+    completenessScore
+  );
+};
+
+const rankRowsForSearch = (
+  rows: TopCableRow[],
+  searchQuery?: string
+): TopCableRow[] => {
+  const trimmedQuery = searchQuery?.trim();
+  if (!trimmedQuery) {
+    return rows;
+  }
+
+  const parsedQuery = parseCatalogSearchQuery(trimmedQuery, rows);
+  const scored = rows.map((row, index) => {
+    const rowSearchIndex = buildRowSearchIndex(row);
+    return {
+      row,
+      index,
+      score: scoreRowForSearch(row, rowSearchIndex, parsedQuery),
+    };
+  });
+
+  scored.sort((left, right) => {
+    if (left.score !== right.score) {
+      return right.score - left.score;
+    }
+
+    if (left.row.qualityState !== right.row.qualityState) {
+      return left.row.qualityState === "ready" ? -1 : 1;
+    }
+
+    const leftCompleteness = scoreTopCableRow(left.row);
+    const rightCompleteness = scoreTopCableRow(right.row);
+    if (leftCompleteness !== rightCompleteness) {
+      return rightCompleteness - leftCompleteness;
+    }
+
+    const leftLatest = getLatestSourceFetchTime(left.row);
+    const rightLatest = getLatestSourceFetchTime(right.row);
+    if (leftLatest !== rightLatest) {
+      return rightLatest - leftLatest;
+    }
+
+    return left.index - right.index;
+  });
+
+  return scored.map((entry) => entry.row);
+};
+
 interface WorkflowReport {
   cables: {
     workflowItemId: Id<"ingestionWorkflowItems">;
@@ -742,6 +1290,7 @@ export const getTopCables = query({
   args: {
     limit: v.optional(v.number()),
     includeStates: v.optional(v.array(catalogQualityStateValidator)),
+    searchQuery: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const limit = Math.max(args.limit ?? 10, 0);
@@ -758,7 +1307,11 @@ export const getTopCables = query({
     const stateFilteredRows = dedupedRows.filter((row) => {
       return includeStates.has(row.qualityState);
     });
-    return stateFilteredRows.slice(0, limit);
+    const searchRankedRows = rankRowsForSearch(
+      stateFilteredRows,
+      args.searchQuery
+    );
+    return searchRankedRows.slice(0, limit);
   },
 });
 

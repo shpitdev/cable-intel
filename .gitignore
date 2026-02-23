@@ -57,3 +57,4 @@ scripts/audit/
 
 .agents
 output/
+.memory/

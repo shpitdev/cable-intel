@@ -20,6 +20,7 @@
     "build": "turbo build",
     "build:vercel": "bash ./scripts/vercel-build.sh",
     "seed:vercel-deployment": "bun run scripts/seed-vercel-deployment.ts",
+    "seed:realistic": "bun run scripts/seed-realistic-catalog.ts",
     "check-types": "turbo check-types",
     "dev:native": "turbo -F native dev",
     "dev:web": "turbo -F web dev",
