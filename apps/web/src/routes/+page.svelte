@@ -1,6 +1,7 @@
 <script lang="ts">
   import { api } from "@cable-intel/backend/convex/_generated/api";
   import { useQuery } from "convex-svelte";
+  import { onMount } from "svelte";
   import { recommendLabels } from "$lib/labeling";
   import {
     buildProfileFromMarkings,
@@ -23,6 +24,7 @@
 
   const CATALOG_LIMIT = 100;
   const SEARCH_DEBOUNCE_MS = 120;
+  const MOBILE_FACET_QUERY = "(max-width: 1179px)";
   const FACET_DIMENSIONS = [
     "brand",
     "type",
@@ -128,6 +130,7 @@
   }));
 
   let selectedVariantId = $state("");
+  let isFacetDrawerOpen = $state(true);
   let facetSelections = $state<Record<FacetDimension, string[]>>({
     ...DEFAULT_FACET_SELECTIONS,
   });
@@ -141,6 +144,26 @@
 
     return () => {
       clearTimeout(timeoutId);
+    };
+  });
+
+  onMount(() => {
+    const mediaQuery = window.matchMedia(MOBILE_FACET_QUERY);
+
+    const syncFacetDrawerState = (isMobile: boolean): void => {
+      isFacetDrawerOpen = !isMobile;
+    };
+
+    syncFacetDrawerState(mediaQuery.matches);
+
+    const handleMediaChange = (event: MediaQueryListEvent): void => {
+      syncFacetDrawerState(event.matches);
+    };
+
+    mediaQuery.addEventListener("change", handleMediaChange);
+
+    return () => {
+      mediaQuery.removeEventListener("change", handleMediaChange);
     };
   });
 
@@ -491,44 +514,76 @@
   {#if $identifyModeStore === "catalog"}
     <div class="catalog-workspace">
       <aside class="facet-nav fade-in delay-2">
-        {#if activeFacetCount > 0}
-          <div class="facet-rail-header">
-            <button
-              type="button"
-              class="inline-action"
-              onclick={clearAllFacets}
-            >
-              Clear filters
-            </button>
-          </div>
-        {/if}
+        <details class="facet-drawer" bind:open={isFacetDrawerOpen}>
+          <summary class="facet-drawer-summary">
+            <span class="facet-drawer-heading">
+              <svg
+                class="facet-filter-icon"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M3 5h18l-7 8v5l-4 1v-6L3 5Z" />
+              </svg>
+              <span>Optional filters</span>
+            </span>
 
-        {#each FACET_DIMENSIONS as dimension (dimension)}
-          <section class="facet-group">
-            <p class="facet-group-title">{FACET_LABELS[dimension]}</p>
-            {#if dimension === "price"}
-              <p class="facet-note">
-                Price ingest is pending, so unknown is expected for now.
-              </p>
-            {/if}
-            <div
-              class="facet-options"
-              role="group"
-              aria-label={FACET_LABELS[dimension]}
-            >
-              {#each catalogFacetOptions[dimension] as option (`${dimension}-${option.value}`)}
+            <span class="facet-drawer-meta">
+              {#if activeFacetCount > 0}
+                <span class="facet-active-count"
+                  >{activeFacetCount}
+                  active</span
+                >
+              {/if}
+              <span class="facet-drawer-caret" aria-hidden="true"></span>
+            </span>
+          </summary>
+
+          <div class="facet-drawer-body">
+            {#if activeFacetCount > 0}
+              <div class="facet-rail-header">
                 <button
                   type="button"
-                  class={`facet-option ${option.selected ? "is-selected" : ""}`}
-                  onclick={() => toggleFacetValue(dimension, option.value)}
+                  class="inline-action"
+                  onclick={clearAllFacets}
                 >
-                  <span class="facet-option-label">{option.label}</span>
-                  <span class="facet-count">{option.count}</span>
+                  Clear filters
                 </button>
-              {/each}
-            </div>
-          </section>
-        {/each}
+              </div>
+            {/if}
+
+            {#each FACET_DIMENSIONS as dimension (dimension)}
+              <section class="facet-group">
+                <p class="facet-group-title">{FACET_LABELS[dimension]}</p>
+                {#if dimension === "price"}
+                  <p class="facet-note">
+                    Price ingest is pending, so unknown is expected for now.
+                  </p>
+                {/if}
+                <div
+                  class="facet-options"
+                  role="group"
+                  aria-label={FACET_LABELS[dimension]}
+                >
+                  {#each catalogFacetOptions[dimension] as option (`${dimension}-${option.value}`)}
+                    <button
+                      type="button"
+                      class={`facet-option ${option.selected ? "is-selected" : ""}`}
+                      onclick={() => toggleFacetValue(dimension, option.value)}
+                    >
+                      <span class="facet-option-label">{option.label}</span>
+                      <span class="facet-count">{option.count}</span>
+                    </button>
+                  {/each}
+                </div>
+              </section>
+            {/each}
+          </div>
+        </details>
       </aside>
 
       <section class="panel fade-in delay-2">

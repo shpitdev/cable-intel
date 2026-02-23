@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
 # Derive a deterministic preview deployment name so we reuse a bounded pool of Convex
 # previews and avoid hitting the 40-deployment quota on busy repos.
 derive_preview_slot_name() {
@@ -29,7 +32,7 @@ derive_preview_slot_name() {
 }
 
 if [[ -n "${CONVEX_DEPLOY_KEY:-}" || (-n "${CONVEX_SELF_HOSTED_URL:-}" && -n "${CONVEX_SELF_HOSTED_ADMIN_KEY:-}") ]]; then
-  cd packages/backend
+  cd "${REPO_ROOT}/packages/backend"
   preview_slot_name=""
   if ! preview_slot_name="$(derive_preview_slot_name)"; then
     preview_slot_name=""
@@ -49,7 +52,10 @@ if [[ -n "${CONVEX_DEPLOY_KEY:-}" || (-n "${CONVEX_SELF_HOSTED_URL:-}" && -n "${
   if [[ -n "${preview_slot_name}" ]]; then
     deploy_args+=(--preview-create "${preview_slot_name}")
   fi
-  bun "${deploy_args[@]}" && exit 0
+  if bun "${deploy_args[@]}"; then
+    exit 0
+  fi
+  cd "${REPO_ROOT}"
 fi
 
 if [[ -n "${CONVEX_URL:-}" && -z "${PUBLIC_CONVEX_URL:-}" ]]; then
@@ -61,4 +67,5 @@ if [[ -z "${PUBLIC_CONVEX_URL:-}" ]]; then
   echo "Warning: PUBLIC_CONVEX_URL is not set. Configure CONVEX_DEPLOY_KEY for dynamic Convex URL injection."
 fi
 
+cd "${REPO_ROOT}"
 turbo run build

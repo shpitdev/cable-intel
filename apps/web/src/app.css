@@ -429,9 +429,8 @@ a {
 
 .facet-nav {
   align-self: start;
-  max-height: calc(100vh - 5.6rem);
   padding: 0.52rem;
-  overflow: auto;
+  overflow: visible;
   background: rgb(255 255 255 / 0.76);
   border: 1px solid var(--line);
   border-radius: 0.92rem;
@@ -442,6 +441,89 @@ a {
   .facet-nav {
     position: sticky;
     top: 4.65rem;
+    max-height: calc(100vh - 5.6rem);
+    overflow: auto;
+  }
+}
+
+.facet-drawer {
+  margin: 0;
+}
+
+.facet-drawer-summary {
+  display: flex;
+  gap: 0.8rem;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.44rem 0.42rem;
+  cursor: pointer;
+  list-style: none;
+  border-radius: 0.72rem;
+}
+
+.facet-drawer-summary:hover {
+  background: rgb(255 255 255 / 0.58);
+}
+
+.facet-drawer-summary::-webkit-details-marker {
+  display: none;
+}
+
+.facet-drawer-heading {
+  display: inline-flex;
+  gap: 0.44rem;
+  align-items: center;
+  font-size: 0.79rem;
+  font-weight: 700;
+  color: var(--ink-strong);
+}
+
+.facet-filter-icon {
+  width: 0.9rem;
+  height: 0.9rem;
+  color: var(--accent-strong);
+}
+
+.facet-drawer-meta {
+  display: inline-flex;
+  gap: 0.44rem;
+  align-items: center;
+}
+
+.facet-active-count {
+  padding: 0.18rem 0.42rem;
+  font-size: 0.66rem;
+  font-weight: 700;
+  color: var(--accent-strong);
+  background: rgb(15 118 110 / 0.12);
+  border: 1px solid rgb(15 118 110 / 0.28);
+  border-radius: 999px;
+}
+
+.facet-drawer-caret {
+  width: 0.44rem;
+  height: 0.44rem;
+  border-right: 2px solid rgb(57 50 40 / 0.72);
+  border-bottom: 2px solid rgb(57 50 40 / 0.72);
+  transform: rotate(45deg);
+  transition: transform 140ms ease;
+}
+
+.facet-drawer[open] .facet-drawer-caret {
+  transform: rotate(225deg);
+}
+
+.facet-drawer-body {
+  margin-top: 0.55rem;
+}
+
+@media (min-width: 1180px) {
+  .facet-drawer-summary {
+    display: none;
+  }
+
+  .facet-drawer-body {
+    margin-top: 0;
   }
 }
 
@@ -476,6 +558,13 @@ a {
   max-height: 13.5rem;
   padding-right: 0.08rem;
   overflow: auto;
+}
+
+@media (max-width: 1179px) {
+  .facet-options {
+    max-height: none;
+    overflow: visible;
+  }
 }
 
 .facet-option {
