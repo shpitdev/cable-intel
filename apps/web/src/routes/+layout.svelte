@@ -2,7 +2,7 @@
   import "../app.css";
   import { setupConvex } from "convex-svelte";
   import { page } from "$app/state";
-  import { PUBLIC_CONVEX_URL } from "$env/static/public";
+  import { env as publicEnv } from "$env/dynamic/public";
   import Header from "../components/header.svelte";
 
   const { children } = $props();
@@ -13,13 +13,11 @@
   const openGraphImageUrl = $derived(
     new URL("/opengraph.svg", page.url).toString()
   );
-  const convexUrl = PUBLIC_CONVEX_URL;
-  if (!convexUrl) {
-    throw new Error(
-      "Missing PUBLIC_CONVEX_URL. Set it directly or configure CONVEX_DEPLOY_KEY in Vercel."
-    );
-  }
-  setupConvex(convexUrl);
+  const convexUrl = publicEnv.PUBLIC_CONVEX_URL?.trim();
+  const fallbackConvexUrl = "https://placeholder.convex.cloud";
+  setupConvex(convexUrl || fallbackConvexUrl, {
+    disabled: !convexUrl,
+  });
 </script>
 
 <svelte:head>
