@@ -44,16 +44,28 @@ const modules = (() => {
   return loaders;
 })();
 
-const createEvidenceRefs = (sourceUrl: string) => {
+const createEvidenceRefs = (
+  sourceUrl: string,
+  options?: {
+    brand?: string;
+    connectorFrom?: string;
+    connectorTo?: string;
+    model?: string;
+  }
+) => {
+  const brand = options?.brand ?? "Anker";
+  const model = options?.model ?? "Anker Prime USB-C Cable";
+  const connectorFrom = options?.connectorFrom ?? "USB-C";
+  const connectorTo = options?.connectorTo ?? "USB-C";
   return [
-    { fieldPath: "brand", sourceUrl, snippet: "Anker" },
+    { fieldPath: "brand", sourceUrl, snippet: brand },
     {
       fieldPath: "model",
       sourceUrl,
-      snippet: "Anker Prime USB-C Cable",
+      snippet: model,
     },
-    { fieldPath: "connectorPair.from", sourceUrl, snippet: "USB-C" },
-    { fieldPath: "connectorPair.to", sourceUrl, snippet: "USB-C" },
+    { fieldPath: "connectorPair.from", sourceUrl, snippet: connectorFrom },
+    { fieldPath: "connectorPair.to", sourceUrl, snippet: connectorTo },
   ];
 };
 
@@ -173,5 +185,280 @@ describe("catalog quality gating", () => {
       {}
     );
     expect(queueSummary.pending).toBeGreaterThanOrEqual(1);
+  });
+
+  it("prefers connector-pair matches even when requested brand is unavailable", async () => {
+    const t = convexTest(schema, modules);
+    const now = Date.now();
+
+    const workflowRunId = await t.mutation(internal.ingestDb.createWorkflow, {
+      allowedDomains: [],
+      seedUrls: [
+        "https://example.com/products/anker-c-c-240",
+        "https://example.com/products/satechi-c-a-100",
+        "https://example.com/products/belkin-c-a-60",
+      ],
+      startedAt: now,
+      totalItems: 3,
+    });
+
+    const insertReadyRow = async (row: {
+      brand: string;
+      connectorFrom: string;
+      connectorTo: string;
+      maxWatts: number;
+      model: string;
+      sku: string;
+      sourceUrl: string;
+      variant: string;
+    }) => {
+      const sourceId = await t.mutation(
+        internal.ingestDb.insertEvidenceSource,
+        {
+          workflowRunId,
+          url: row.sourceUrl,
+          canonicalUrl: row.sourceUrl,
+          fetchedAt: now,
+          contentHash: `${row.sku}-hash`,
+          html: "<html></html>",
+          markdown: row.model,
+          createdAt: now,
+        }
+      );
+
+      await t.mutation(internal.ingestDb.upsertVariantAndInsertSpec, {
+        workflowRunId,
+        sourceUrl: row.sourceUrl,
+        evidenceSourceId: sourceId,
+        now,
+        parsed: {
+          brand: row.brand,
+          model: row.model,
+          variant: row.variant,
+          sku: row.sku,
+          connectorPair: {
+            from: row.connectorFrom,
+            to: row.connectorTo,
+          },
+          power: {
+            maxWatts: row.maxWatts,
+            pdSupported: true,
+          },
+          data: {},
+          video: {},
+          images: [{ url: `https://images.example.com/${row.sku}.jpg` }],
+          evidence: createEvidenceRefs(row.sourceUrl, {
+            brand: row.brand,
+            model: row.model,
+            connectorFrom: row.connectorFrom,
+            connectorTo: row.connectorTo,
+          }),
+        },
+      });
+    };
+
+    await insertReadyRow({
+      brand: "Anker",
+      model: "Anker Prime Cable",
+      variant: "1 m",
+      sku: "ANKER-CC-240",
+      connectorFrom: "USB-C",
+      connectorTo: "USB-C",
+      maxWatts: 240,
+      sourceUrl: "https://example.com/products/anker-c-c-240",
+    });
+    await insertReadyRow({
+      brand: "Satechi",
+      model: "Satechi USB-C to USB-A Cable",
+      variant: "1 m",
+      sku: "SATECHI-CA-100",
+      connectorFrom: "USB-C",
+      connectorTo: "USB-A",
+      maxWatts: 100,
+      sourceUrl: "https://example.com/products/satechi-c-a-100",
+    });
+    await insertReadyRow({
+      brand: "Belkin",
+      model: "Belkin USB-C to USB-A Cable",
+      variant: "2 m",
+      sku: "BELKIN-CA-60",
+      connectorFrom: "USB-C",
+      connectorTo: "USB-A",
+      maxWatts: 60,
+      sourceUrl: "https://example.com/products/belkin-c-a-60",
+    });
+
+    const rows = await t.query(api.ingestQueries.getTopCables, {
+      limit: 10,
+      searchQuery: "anker usbc to usba",
+    });
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows[0]?.connectorFrom).toBe("USB-C");
+    expect(rows[0]?.connectorTo).toBe("USB-A");
+  });
+
+  it("handles misspelled brand terms and still ranks intended brand first", async () => {
+    const t = convexTest(schema, modules);
+    const now = Date.now();
+
+    const workflowRunId = await t.mutation(internal.ingestDb.createWorkflow, {
+      allowedDomains: [],
+      seedUrls: [
+        "https://example.com/products/anker-c-c-240",
+        "https://example.com/products/satechi-c-c-240",
+      ],
+      startedAt: now,
+      totalItems: 2,
+    });
+
+    const insertReadyRow = async (row: {
+      brand: string;
+      model: string;
+      sku: string;
+      sourceUrl: string;
+    }) => {
+      const sourceId = await t.mutation(
+        internal.ingestDb.insertEvidenceSource,
+        {
+          workflowRunId,
+          url: row.sourceUrl,
+          canonicalUrl: row.sourceUrl,
+          fetchedAt: now,
+          contentHash: `${row.sku}-hash`,
+          html: "<html></html>",
+          markdown: row.model,
+          createdAt: now,
+        }
+      );
+
+      await t.mutation(internal.ingestDb.upsertVariantAndInsertSpec, {
+        workflowRunId,
+        sourceUrl: row.sourceUrl,
+        evidenceSourceId: sourceId,
+        now,
+        parsed: {
+          brand: row.brand,
+          model: row.model,
+          variant: "1 m",
+          sku: row.sku,
+          connectorPair: {
+            from: "USB-C",
+            to: "USB-C",
+          },
+          power: {
+            maxWatts: 240,
+            pdSupported: true,
+          },
+          data: {},
+          video: {},
+          images: [{ url: `https://images.example.com/${row.sku}.jpg` }],
+          evidence: createEvidenceRefs(row.sourceUrl, {
+            brand: row.brand,
+            model: row.model,
+          }),
+        },
+      });
+    };
+
+    await insertReadyRow({
+      brand: "Anker",
+      model: "Anker Prime Cable",
+      sku: "ANKER-CC-240",
+      sourceUrl: "https://example.com/products/anker-c-c-240",
+    });
+    await insertReadyRow({
+      brand: "Satechi",
+      model: "Satechi USB4 Cable",
+      sku: "SATECHI-CC-240",
+      sourceUrl: "https://example.com/products/satechi-c-c-240",
+    });
+
+    const rows = await t.query(api.ingestQueries.getTopCables, {
+      limit: 10,
+      searchQuery: "ankre usbc to usbc",
+    });
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows[0]?.brand).toBe("Anker");
+  });
+
+  it("boosts rows whose wattage matches requested power", async () => {
+    const t = convexTest(schema, modules);
+    const now = Date.now();
+
+    const workflowRunId = await t.mutation(internal.ingestDb.createWorkflow, {
+      allowedDomains: [],
+      seedUrls: [
+        "https://example.com/products/anker-c-c-240",
+        "https://example.com/products/anker-c-c-100",
+      ],
+      startedAt: now,
+      totalItems: 2,
+    });
+
+    const insertReadyRow = async (row: {
+      maxWatts: number;
+      sku: string;
+      sourceUrl: string;
+      variant: string;
+    }) => {
+      const sourceId = await t.mutation(
+        internal.ingestDb.insertEvidenceSource,
+        {
+          workflowRunId,
+          url: row.sourceUrl,
+          canonicalUrl: row.sourceUrl,
+          fetchedAt: now,
+          contentHash: `${row.sku}-hash`,
+          html: "<html></html>",
+          markdown: "Anker Prime Cable",
+          createdAt: now,
+        }
+      );
+
+      await t.mutation(internal.ingestDb.upsertVariantAndInsertSpec, {
+        workflowRunId,
+        sourceUrl: row.sourceUrl,
+        evidenceSourceId: sourceId,
+        now,
+        parsed: {
+          brand: "Anker",
+          model: "Anker Prime Cable",
+          variant: row.variant,
+          sku: row.sku,
+          connectorPair: {
+            from: "USB-C",
+            to: "USB-C",
+          },
+          power: {
+            maxWatts: row.maxWatts,
+            pdSupported: true,
+          },
+          data: {},
+          video: {},
+          images: [{ url: `https://images.example.com/${row.sku}.jpg` }],
+          evidence: createEvidenceRefs(row.sourceUrl),
+        },
+      });
+    };
+
+    await insertReadyRow({
+      maxWatts: 100,
+      sku: "ANKER-CC-100",
+      variant: "1 m",
+      sourceUrl: "https://example.com/products/anker-c-c-100",
+    });
+    await insertReadyRow({
+      maxWatts: 240,
+      sku: "ANKER-CC-240",
+      variant: "2 m",
+      sourceUrl: "https://example.com/products/anker-c-c-240",
+    });
+
+    const rows = await t.query(api.ingestQueries.getTopCables, {
+      limit: 10,
+      searchQuery: "anker usbc 240w",
+    });
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows[0]?.power.maxWatts).toBe(240);
   });
 });

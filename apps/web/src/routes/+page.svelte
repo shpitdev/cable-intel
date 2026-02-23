@@ -22,6 +22,7 @@
   import ProfileSummary from "../components/profile-summary.svelte";
 
   const CATALOG_LIMIT = 100;
+  const SEARCH_DEBOUNCE_MS = 120;
   const FACET_DIMENSIONS = [
     "brand",
     "type",
@@ -120,15 +121,28 @@
     value: string;
   }
 
-  const topCablesQuery = useQuery(api.ingestQueries.getTopCables, {
+  let debouncedCatalogSearch = $state("");
+  const topCablesQuery = useQuery(api.ingestQueries.getTopCables, () => ({
     limit: CATALOG_LIMIT,
-  });
+    searchQuery: debouncedCatalogSearch || undefined,
+  }));
 
   let selectedVariantId = $state("");
   let facetSelections = $state<Record<FacetDimension, string[]>>({
     ...DEFAULT_FACET_SELECTIONS,
   });
   let markings = $state<MarkingsDraft>({ ...DEFAULT_MARKINGS_DRAFT });
+
+  $effect(() => {
+    const nextSearch = $catalogSearchStore.trim();
+    const timeoutId = setTimeout(() => {
+      debouncedCatalogSearch = nextSearch;
+    }, SEARCH_DEBOUNCE_MS);
+
+    return () => {
+      clearTimeout(timeoutId);
+    };
+  });
 
   const normalizeFacetToken = (value?: string): string => {
     return value?.trim() || FACET_UNKNOWN_VALUE;
@@ -295,28 +309,7 @@
   });
 
   const baseFilteredCatalogProfiles = $derived.by(() => {
-    const term = $catalogSearchStore.trim().toLowerCase();
-    const termFiltered = allCatalogProfiles.filter((profile) => {
-      const searchable = [
-        profile.displayName,
-        profile.brand,
-        profile.model,
-        profile.variant,
-        profile.sku,
-        profile.productUrl,
-        profile.connectorFrom,
-        profile.connectorTo,
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-
-      return searchable.includes(term);
-    });
-
-    const source = term ? termFiltered : allCatalogProfiles;
-
-    return source;
+    return allCatalogProfiles;
   });
 
   const matchesFacetSelections = (
