@@ -2,9 +2,10 @@
   import "../app.css";
   import { setupConvex } from "convex-svelte";
   import { page } from "$app/state";
-  import { env as publicEnv } from "$env/dynamic/public";
+  import { PUBLIC_CONVEX_URL } from "$env/static/public";
   import Header from "../components/header.svelte";
 
+  const PLACEHOLDER_CONVEX_URL = "https://placeholder.convex.cloud";
   const { children } = $props();
   const siteName = "Cable Intel";
   const siteDescription =
@@ -13,10 +14,8 @@
   const openGraphImageUrl = $derived(
     new URL("/opengraph.svg", page.url).toString()
   );
-  const convexUrl = publicEnv.PUBLIC_CONVEX_URL?.trim();
-  const fallbackConvexUrl = "https://placeholder.convex.cloud";
-  setupConvex(convexUrl || fallbackConvexUrl, {
-    disabled: !convexUrl,
+  setupConvex(PUBLIC_CONVEX_URL, {
+    disabled: PUBLIC_CONVEX_URL === PLACEHOLDER_CONVEX_URL,
   });
 </script>
 

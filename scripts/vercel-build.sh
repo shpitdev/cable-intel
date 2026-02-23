@@ -64,7 +64,8 @@ if [[ -n "${CONVEX_URL:-}" && -z "${PUBLIC_CONVEX_URL:-}" ]]; then
 fi
 
 if [[ -z "${PUBLIC_CONVEX_URL:-}" ]]; then
-  echo "Warning: PUBLIC_CONVEX_URL is not set. Configure CONVEX_DEPLOY_KEY for dynamic Convex URL injection."
+  export PUBLIC_CONVEX_URL="https://placeholder.convex.cloud"
+  echo "Warning: PUBLIC_CONVEX_URL is not set. Building with placeholder URL and disabled Convex client."
 fi
 
 cd "${REPO_ROOT}"
