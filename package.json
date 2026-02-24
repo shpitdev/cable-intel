@@ -27,7 +27,9 @@
     "dev:server": "turbo -F @cable-intel/backend dev",
     "dev:setup": "turbo -F @cable-intel/backend dev:setup",
     "check": "ultracite check",
-    "fix": "ultracite fix"
+    "fix": "ultracite fix",
+    "qa:browser": "bash ./scripts/browser/run-local-browser-qa.sh",
+    "qa:browser:smoke": "bash ./scripts/browser/agent-browser-smoke.sh"
   },
   "dependencies": {
     "@cable-intel/env": "workspace:*",

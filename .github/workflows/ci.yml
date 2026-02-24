@@ -18,9 +18,14 @@ on:
       - ".codex/**"
       - ".opencode/**"
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  checks:
-    runs-on: ubuntu-latest
+  stage-1-quality:
+    name: Stage 1 - Quality
+    runs-on: ${{ vars.CI_RUNNER != '' && vars.CI_RUNNER || 'ubuntu-latest' }}
     env:
       PUBLIC_CONVEX_URL: "https://example.convex.cloud"
     steps:
@@ -31,6 +36,16 @@ jobs:
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.8
+
+      - name: Cache Bun + Turbo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.bun/install/cache
+            .turbo
+          key: ${{ runner.os }}-bun-turbo-${{ hashFiles('**/bun.lock', '**/bun.lockb', 'package.json', 'apps/**/package.json', 'packages/**/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-turbo-
 
       - name: Install dependencies
         run: |
@@ -43,6 +58,191 @@ jobs:
 
       - name: Ultracite check
         run: bun x ultracite check
+
+      - name: Core manual inference tests
+        run: |
+          bun test \
+            packages/backend/convex/manualInferenceLogic.test.ts \
+            packages/backend/convex/manualInference.integration.test.ts \
+            apps/web/src/lib/capability.test.ts \
+            apps/web/src/lib/mappers.test.ts
+
+      - name: Publish summary
+        if: always()
+        run: |
+          echo "## Stage 1 - Quality" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- ultracite check" >> "$GITHUB_STEP_SUMMARY"
+          echo "- manual inference + mapping tests" >> "$GITHUB_STEP_SUMMARY"
+
+  stage-2-browser-qa:
+    name: Stage 2 - Browser QA
+    needs: stage-1-quality
+    runs-on: ${{ vars.CI_RUNNER != '' && vars.CI_RUNNER || 'ubuntu-latest' }}
+    permissions:
+      contents: read
+      pull-requests: write
+    env:
+      PUBLIC_CONVEX_URL: "https://example.convex.cloud"
+      USE_BROWSERBASE: "1"
+      BROWSERBASE_API_KEY: ${{ secrets.BROWSERBASE_API_KEY }}
+      BROWSERBASE_PROJECT_ID: ${{ secrets.BROWSERBASE_PROJECT_ID }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.8
+
+      - name: Cache Bun + Turbo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.bun/install/cache
+            .turbo
+          key: ${{ runner.os }}-bun-turbo-${{ hashFiles('**/bun.lock', '**/bun.lockb', 'package.json', 'apps/**/package.json', 'packages/**/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-turbo-
+
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          bun install --frozen-lockfile || (
+            echo "bun install failed; clearing Bun cache and retrying" >&2
+            bun pm cache rm
+            bun install --frozen-lockfile
+          )
+
+      - name: Require Browserbase credentials
+        run: |
+          if [ -z "${BROWSERBASE_API_KEY:-}" ]; then
+            echo "Missing BROWSERBASE_API_KEY secret"
+            exit 1
+          fi
+          if [ -z "${BROWSERBASE_PROJECT_ID:-}" ]; then
+            echo "Missing BROWSERBASE_PROJECT_ID secret"
+            exit 1
+          fi
+
+      - name: Install agent-browser CLI
+        run: npm install -g agent-browser@latest
+
+      - name: Run browser QA smoke
+        run: |
+          bash ./scripts/browser/run-local-browser-qa.sh --out-dir artifacts/browser-qa
+
+      - name: Read replay metadata
+        id: browser_qa_meta
+        run: |
+          REPLAY_URL=$(jq -r '.browserbaseReplayUrl // empty' artifacts/browser-qa/results.json)
+          echo "replay_url=${REPLAY_URL}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload browser QA artifacts
+        id: upload_browser_qa
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-qa
+          path: artifacts/browser-qa/**
+          if-no-files-found: error
+
+      - name: Comment browser QA links on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        env:
+          ARTIFACT_URL: ${{ steps.upload_browser_qa.outputs.artifact-url }}
+          REPLAY_URL: ${{ steps.browser_qa_meta.outputs.replay_url }}
+        with:
+          script: |
+            const marker = '<!-- browser-qa-report -->';
+            const artifactUrl = process.env.ARTIFACT_URL ?? '';
+            const replayUrl = process.env.REPLAY_URL ?? '';
+            const bodyLines = [
+              marker,
+              '## Browser QA (agent-browser)',
+              artifactUrl
+                ? `- Screenshots artifact: [browser-qa](${artifactUrl})`
+                : '- Screenshots artifact: unavailable',
+              replayUrl
+                ? `- Browserbase replay: [session replay](${replayUrl})`
+                : '- Browserbase replay: unavailable',
+            ];
+            const body = bodyLines.join('\n');
+
+            const issue_number = context.issue.number;
+            const { owner, repo } = context.repo;
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number,
+              per_page: 100,
+            });
+            const existing = comments.find((comment) =>
+              typeof comment.body === 'string' && comment.body.includes(marker)
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: existing.id,
+                body,
+              });
+              return;
+            }
+
+            await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number,
+              body,
+            });
+
+      - name: Publish summary
+        if: always()
+        run: |
+          echo "## Stage 2 - Browser QA" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- browser smoke: pass" >> "$GITHUB_STEP_SUMMARY"
+          REPLAY_URL=$(jq -r '.browserbaseReplayUrl // empty' artifacts/browser-qa/results.json)
+          if [ -n "$REPLAY_URL" ]; then
+            echo "- Browserbase replay: $REPLAY_URL" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  stage-3-integration-build:
+    name: Stage 3 - Integration + Build
+    needs: stage-2-browser-qa
+    runs-on: ${{ vars.CI_LARGE_RUNNER != '' && vars.CI_LARGE_RUNNER || (vars.CI_RUNNER != '' && vars.CI_RUNNER || 'ubuntu-latest') }}
+    env:
+      PUBLIC_CONVEX_URL: "https://example.convex.cloud"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.8
+
+      - name: Cache Bun + Turbo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.bun/install/cache
+            .turbo
+          key: ${{ runner.os }}-bun-turbo-${{ hashFiles('**/bun.lock', '**/bun.lockb', 'package.json', 'apps/**/package.json', 'packages/**/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-turbo-
+
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          bun install --frozen-lockfile || (
+            echo "bun install failed; clearing Bun cache and retrying" >&2
+            bun pm cache rm
+            bun install --frozen-lockfile
+          )
 
       - name: Convex Shopify ingest integration test
         run: bun test packages/backend/convex/shopify.ingest.integration.test.ts
@@ -68,10 +268,34 @@ jobs:
       - name: Publish summary
         if: always()
         run: |
-          echo "## CI Run" >> "$GITHUB_STEP_SUMMARY"
+          echo "## Stage 3 - Integration + Build" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "- ultracite check" >> "$GITHUB_STEP_SUMMARY"
           echo "- shopify ingest integration test" >> "$GITHUB_STEP_SUMMARY"
           echo "- shopify source integration test" >> "$GITHUB_STEP_SUMMARY"
           echo "- workspace build" >> "$GITHUB_STEP_SUMMARY"
           echo "- TUI compile smoke test" >> "$GITHUB_STEP_SUMMARY"
+
+  checks:
+    name: checks
+    if: always()
+    needs:
+      - stage-1-quality
+      - stage-2-browser-qa
+      - stage-3-integration-build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Finalize staged CI result
+        run: |
+          if [ "${{ needs.stage-1-quality.result }}" != "success" ]; then
+            echo "Stage 1 failed."
+            exit 1
+          fi
+          if [ "${{ needs.stage-2-browser-qa.result }}" != "success" ]; then
+            echo "Stage 2 failed."
+            exit 1
+          fi
+          if [ "${{ needs.stage-3-integration-build.result }}" != "success" ]; then
+            echo "Stage 3 failed."
+            exit 1
+          fi
+          echo "All CI stages passed."
