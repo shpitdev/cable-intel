@@ -74,20 +74,106 @@ jobs:
             apps/tui/dist/${{ matrix.exec_name }}.sha256
           if-no-files-found: error
 
+  browser-qa:
+    runs-on: ubuntu-latest
+    env:
+      PUBLIC_CONVEX_URL: "https://example.convex.cloud"
+      USE_BROWSERBASE: "1"
+      BROWSERBASE_API_KEY: ${{ secrets.BROWSERBASE_API_KEY }}
+      BROWSERBASE_PROJECT_ID: ${{ secrets.BROWSERBASE_PROJECT_ID }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.8
+
+      - name: Cache Bun + Turbo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.bun/install/cache
+            .turbo
+          key: ${{ runner.os }}-bun-turbo-${{ hashFiles('**/bun.lock', '**/bun.lockb', 'package.json', 'apps/**/package.json', 'packages/**/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-turbo-
+
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          bun install --frozen-lockfile || (
+            echo "bun install failed; clearing Bun cache and retrying" >&2
+            bun pm cache rm
+            bun install --frozen-lockfile
+          )
+
+      - name: Require Browserbase credentials
+        run: |
+          if [ -z "${BROWSERBASE_API_KEY:-}" ]; then
+            echo "Missing BROWSERBASE_API_KEY secret"
+            exit 1
+          fi
+          if [ -z "${BROWSERBASE_PROJECT_ID:-}" ]; then
+            echo "Missing BROWSERBASE_PROJECT_ID secret"
+            exit 1
+          fi
+
+      - name: Install agent-browser CLI
+        run: npm install -g agent-browser@latest
+
+      - name: Run browser QA smoke
+        run: bash ./scripts/browser/run-local-browser-qa.sh --out-dir artifacts/browser-qa-release
+
+      - name: Upload browser QA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-qa-release
+          path: artifacts/browser-qa-release/**
+          if-no-files-found: error
+
   publish-release:
     if: startsWith(github.ref, 'refs/tags/')
-    needs: build-binaries
+    needs:
+      - build-binaries
+      - browser-qa
     runs-on: ubuntu-latest
     steps:
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
           path: release-assets
-          merge-multiple: true
 
       - name: Publish release assets
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           generate_release_notes: true
-          files: release-assets/*
+          files: release-assets/**/*
+
+      - name: Append Browser QA replay link to release notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          RESULTS_FILE="release-assets/browser-qa-release/results.json"
+          if [ ! -f "$RESULTS_FILE" ]; then
+            echo "No browser QA results file found; skipping release note append."
+            exit 0
+          fi
+
+          REPLAY_URL=$(jq -r '.browserbaseReplayUrl // empty' "$RESULTS_FILE")
+          if [ -z "$REPLAY_URL" ]; then
+            echo "No Browserbase replay URL found; skipping release note append."
+            exit 0
+          fi
+
+          CURRENT_BODY=$(gh release view "${GITHUB_REF_NAME}" --json body --jq '.body')
+          {
+            printf "%s\n\n" "$CURRENT_BODY"
+            echo "## Browser QA"
+            echo ""
+            echo "- Browserbase replay: ${REPLAY_URL}"
+          } > "$RUNNER_TEMP/release-notes.md"
+
+          gh release edit "${GITHUB_REF_NAME}" --notes-file "$RUNNER_TEMP/release-notes.md"
