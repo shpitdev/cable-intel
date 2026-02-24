@@ -14,7 +14,7 @@
   } from "$lib/types";
   import { DEFAULT_MARKINGS_DRAFT } from "$lib/types";
   import {
-    catalogSearchStore,
+    catalogSearchQueryStore,
     identifyModeStore,
   } from "$lib/workspace-ui-state";
   import CatalogPicker from "../components/catalog-picker.svelte";
@@ -23,7 +23,6 @@
   import ProfileSummary from "../components/profile-summary.svelte";
 
   const CATALOG_LIMIT = 100;
-  const SEARCH_DEBOUNCE_MS = 120;
   const DRAFT_SYNC_DEBOUNCE_MS = 180;
   const CONVEX_REQUEST_TIMEOUT_MS = 12_000;
   const CONVEX_REQUEST_TIMEOUT_MESSAGE =
@@ -135,6 +134,18 @@
     "network error",
     "timed out before acknowledgement",
   ] as const;
+  const MANUAL_DRAFT_FIELDS = [
+    "connectorFrom",
+    "connectorTo",
+    "watts",
+    "usbGeneration",
+    "videoSupport",
+    "dataOnly",
+    "gbps",
+    "maxResolution",
+    "maxRefreshHz",
+  ] as const;
+  type ManualDraftField = (typeof MANUAL_DRAFT_FIELDS)[number];
 
   interface FacetOption {
     count: number;
@@ -175,10 +186,9 @@
     }
   };
 
-  let debouncedCatalogSearch = $state("");
   const topCablesQuery = useQuery(api.ingestQueries.getTopCables, () => ({
     limit: CATALOG_LIMIT,
-    searchQuery: debouncedCatalogSearch || undefined,
+    searchQuery: $catalogSearchQueryStore || undefined,
   }));
   let workspaceId = $state("");
   const manualSessionQuery = useQuery(api.manualInference.getSession, () =>
@@ -202,17 +212,8 @@
   );
   let isEnsuringManualSession = $state(false);
   let nextManualSessionEnsureAt = $state(0);
-
-  $effect(() => {
-    const nextSearch = $catalogSearchStore.trim();
-    const timeoutId = setTimeout(() => {
-      debouncedCatalogSearch = nextSearch;
-    }, SEARCH_DEBOUNCE_MS);
-
-    return () => {
-      clearTimeout(timeoutId);
-    };
-  });
+  let cachedCatalogRows = $state<CatalogCableRow[]>([]);
+  let inferredFieldValues = $state<Partial<MarkingsDraft>>({});
 
   const toUiError = (error: unknown): string => {
     if (error instanceof Error) {
@@ -234,10 +235,10 @@
     });
   };
 
-  const withConvexRequestTimeout = async (
-    operation: Promise<unknown>
-  ): Promise<unknown> => {
-    return await new Promise<unknown>((resolve, reject) => {
+  async function withConvexRequestTimeout<T>(
+    operation: Promise<T>
+  ): Promise<T> {
+    return await new Promise<T>((resolve, reject) => {
       const timeoutId = setTimeout(() => {
         reject(new Error(CONVEX_REQUEST_TIMEOUT_MESSAGE));
       }, CONVEX_REQUEST_TIMEOUT_MS);
@@ -252,11 +253,11 @@
           reject(error);
         });
     });
-  };
+  }
 
-  const runWithTransientConvexRetry = async (
-    operation: () => Promise<unknown>
-  ): Promise<unknown> => {
+  async function runWithTransientConvexRetry<T>(
+    operation: () => Promise<T>
+  ): Promise<T> {
     try {
       return await withConvexRequestTimeout(operation());
     } catch (error) {
@@ -266,7 +267,7 @@
       await waitMs(TRANSIENT_CONVEX_RETRY_DELAY_MS);
       return await withConvexRequestTimeout(operation());
     }
-  };
+  }
 
   const createWorkspaceId = (): string => {
     if (
@@ -433,6 +434,14 @@
     };
   });
 
+  $effect(() => {
+    const rows = topCablesQuery.data as CatalogCableRow[] | undefined;
+    if (!rows) {
+      return;
+    }
+    cachedCatalogRows = rows;
+  });
+
   const normalizeFacetToken = (value?: string): string => {
     return value?.trim() || FACET_UNKNOWN_VALUE;
   };
@@ -593,7 +602,8 @@
   };
 
   const allCatalogProfiles = $derived.by(() => {
-    const rows = (topCablesQuery.data ?? []) as CatalogCableRow[];
+    const rows = (topCablesQuery.data ??
+      cachedCatalogRows) as CatalogCableRow[];
     return rows.map(mapCatalogRowToProfile);
   });
 
@@ -765,7 +775,7 @@
       return "Needs retry";
     }
     if (manualSessionState.status === "needs_followup") {
-      return `${confidencePercent}% · follow-up`;
+      return `${confidencePercent}% · draft ready`;
     }
     if (manualSessionState.status === "ready") {
       return `${confidencePercent}% · ready`;
@@ -799,6 +809,23 @@
     return pendingFollowUpQuestions.length > 0;
   });
 
+  const inferredFieldBadges = $derived.by(() => {
+    const nextBadges: Partial<Record<ManualDraftField, boolean>> = {};
+    for (const field of MANUAL_DRAFT_FIELDS) {
+      if (!(field in inferredFieldValues)) {
+        continue;
+      }
+      if (markings[field] === inferredFieldValues[field]) {
+        nextBadges[field] = true;
+      }
+    }
+    return nextBadges;
+  });
+
+  const hasInferredFieldBadges = $derived.by(() => {
+    return Object.keys(inferredFieldBadges).length > 0;
+  });
+
   const setSelectedVariantId = (variantId: string): void => {
     selectedVariantId = variantId;
   };
@@ -826,6 +853,55 @@
     facetSelections = {
       ...DEFAULT_FACET_SELECTIONS,
     };
+  };
+
+  const isMarkingsDraft = (value: unknown): value is MarkingsDraft => {
+    if (!value || typeof value !== "object") {
+      return false;
+    }
+    const draft = value as Partial<MarkingsDraft>;
+    return (
+      typeof draft.connectorFrom === "string" &&
+      typeof draft.connectorTo === "string" &&
+      typeof draft.dataOnly === "boolean" &&
+      typeof draft.gbps === "string" &&
+      typeof draft.maxRefreshHz === "string" &&
+      typeof draft.maxResolution === "string" &&
+      typeof draft.usbGeneration === "string" &&
+      typeof draft.videoSupport === "string" &&
+      typeof draft.watts === "string"
+    );
+  };
+
+  const extractSessionDraft = (value: unknown): MarkingsDraft | null => {
+    if (!value || typeof value !== "object" || !("draft" in value)) {
+      return null;
+    }
+    const draft = (value as { draft?: unknown }).draft;
+    return isMarkingsDraft(draft) ? draft : null;
+  };
+
+  const getInferredFieldValues = (
+    previousDraft: MarkingsDraft,
+    nextDraft: MarkingsDraft
+  ): Partial<MarkingsDraft> => {
+    const patch: Partial<Record<ManualDraftField, string | boolean>> = {};
+    for (const field of MANUAL_DRAFT_FIELDS) {
+      if (previousDraft[field] !== nextDraft[field]) {
+        patch[field] = nextDraft[field];
+      }
+    }
+    return patch as Partial<MarkingsDraft>;
+  };
+
+  const handleManualPromptKeydown = async (
+    event: KeyboardEvent
+  ): Promise<void> => {
+    if (event.key !== "Enter" || event.shiftKey || event.isComposing) {
+      return;
+    }
+    event.preventDefault();
+    await submitManualPrompt();
   };
 
   const patchMarkings = (patch: Partial<MarkingsDraft>): void => {
@@ -858,6 +934,7 @@
         });
       });
       manualPrompt = "";
+      inferredFieldValues = {};
     } catch (error) {
       manualUiError = `Failed to reset manual session: ${toUiError(error)}`;
     }
@@ -893,8 +970,8 @@
     return false;
   };
 
-  const runManualSubmitAction = async (prompt: string): Promise<void> => {
-    await withConvexRequestTimeout(
+  const runManualSubmitAction = async (prompt: string): Promise<unknown> => {
+    return await withConvexRequestTimeout(
       convex.action(api.manualInference.submitPrompt, {
         workspaceId,
         prompt,
@@ -904,21 +981,21 @@
 
   const retryManualSubmitAfterTransientError = async (
     prompt: string
-  ): Promise<void> => {
+  ): Promise<unknown> => {
     const recovered = await recoverManualSubmitFromConnectionDrop();
     if (recovered) {
-      return;
+      return null;
     }
 
     await waitMs(TRANSIENT_CONVEX_RETRY_DELAY_MS);
     try {
-      await runManualSubmitAction(prompt);
+      return await runManualSubmitAction(prompt);
     } catch (error) {
       if (isTransientConvexTransportError(error)) {
         const recoveredAfterRetry =
           await recoverManualSubmitFromConnectionDrop();
         if (recoveredAfterRetry) {
-          return;
+          return null;
         }
       }
       throw error;
@@ -941,17 +1018,39 @@
 
     manualUiError = "";
     isSubmittingManualPrompt = true;
+    const draftBeforeSubmit = { ...markings };
 
     try {
       const didFlushDraftPatch = await flushDraftPatch();
       if (!didFlushDraftPatch) {
         return;
       }
-      await runManualSubmitAction(prompt);
+      const sessionAfterSubmit = await runManualSubmitAction(prompt);
+      const inferredDraft = extractSessionDraft(sessionAfterSubmit);
+      if (inferredDraft) {
+        inferredFieldValues = getInferredFieldValues(
+          draftBeforeSubmit,
+          inferredDraft
+        );
+        markings = {
+          ...inferredDraft,
+        };
+      }
     } catch (error) {
       if (isTransientConvexTransportError(error)) {
         try {
-          await retryManualSubmitAfterTransientError(prompt);
+          const sessionAfterRetry =
+            await retryManualSubmitAfterTransientError(prompt);
+          const inferredDraft = extractSessionDraft(sessionAfterRetry);
+          if (inferredDraft) {
+            inferredFieldValues = getInferredFieldValues(
+              draftBeforeSubmit,
+              inferredDraft
+            );
+            markings = {
+              ...inferredDraft,
+            };
+          }
           return;
         } catch (retryError) {
           manualUiError = `Manual inference failed: ${toUiError(retryError)}`;
@@ -1095,11 +1194,13 @@
 
         {#if !isConvexConnected}
           <p class="note mt-3">{CONVEX_RECONNECTING_NOTE}</p>
-        {:else if topCablesQuery.isLoading}
+        {:else if topCablesQuery.isLoading && cachedCatalogRows.length === 0}
           <p class="note mt-3">Loading catalog rows...</p>
+        {:else if topCablesQuery.isLoading}
+          <p class="note mt-3">Refreshing catalog matches...</p>
         {/if}
 
-        {#if isConvexConnected && (!topCablesQuery.data || topCablesQuery.data.length === 0)}
+        {#if isConvexConnected && !topCablesQuery.isLoading && allCatalogProfiles.length === 0}
           <p class="note mt-3">
             Catalog is currently empty. Use manual entry mode for now.
           </p>
@@ -1122,29 +1223,36 @@
         </div>
 
         <p class="panel-subtitle">
-          Describe what is printed on the cable. We will pre-fill manual fields
-          and ask up to three focused follow-up questions only when needed.
+          Describe what is printed on the cable. We will infer as much as
+          possible first, then show optional clarifiers only when signal is too
+          sparse.
         </p>
 
-        <label class="field mt-4">
-          <span class="sr-only">Cable description</span>
-          <textarea
-            class="field-textarea"
-            rows="3"
-            placeholder='Try: "usb-c to c, 240w, braided, 8k 60hz"'
-            bind:value={manualPrompt}
-          ></textarea>
-        </label>
-
-        <div class="manual-assist-actions">
+        <div class="manual-prompt-row mt-4">
+          <label class="field manual-prompt-field">
+            <span class="sr-only">Cable description</span>
+            <textarea
+              class="field-textarea"
+              rows="3"
+              placeholder='Try: "usb-c to c, 240w, braided, 8k 60hz"'
+              bind:value={manualPrompt}
+              onkeydown={handleManualPromptKeydown}
+            ></textarea>
+          </label>
           <button
             type="button"
-            class="inline-action inline-action-primary"
+            class="inline-action inline-action-primary manual-prompt-submit"
             onclick={submitManualPrompt}
             disabled={isManualBusy}
           >
-            {isManualBusy ? "Inferring..." : "Infer Fields"}
+            {isManualBusy ? "Inferring..." : "Enter"}
           </button>
+        </div>
+        <p class="note manual-prompt-hint">
+          Press Enter to infer. Use Shift+Enter for a new line.
+        </p>
+
+        <div class="manual-assist-actions">
           <button
             type="button"
             class="inline-action"
@@ -1169,7 +1277,7 @@
 
         {#if hasManualPendingQuestions}
           <div class="manual-followup-stack">
-            <p class="field-label">Follow-up questions</p>
+            <p class="field-label">Optional quick clarifier</p>
             {#each pendingFollowUpQuestions as question (question.id)}
               <article class="manual-followup-card">
                 <p class="manual-followup-prompt">{question.prompt}</p>
@@ -1215,11 +1323,21 @@
         </div>
 
         <p class="panel-subtitle">
-          Enter cable markings when catalog data is not enough.
+          Review inferred values and adjust anything you disagree with.
         </p>
 
+        {#if hasInferredFieldBadges}
+          <p class="note mt-3">
+            Fields tagged as Inferred came from your description.
+          </p>
+        {/if}
+
         <div class="mt-4">
-          <MarkingsForm values={markings} onChange={patchMarkings} />
+          <MarkingsForm
+            values={markings}
+            onChange={patchMarkings}
+            inferredFields={inferredFieldBadges}
+          />
         </div>
       </section>
 

@@ -1,15 +1,28 @@
 <script lang="ts">
   import type { IdentifyMode } from "$lib/types";
   import {
-    catalogSearchStore,
+    catalogSearchInputStore,
+    catalogSearchQueryStore,
     identifyModeStore,
   } from "$lib/workspace-ui-state";
 
+  const SEARCH_DEBOUNCE_MS = 120;
   const links = [{ to: "/", label: "Workspace" }];
 
   const setIdentifyMode = (mode: IdentifyMode): void => {
     identifyModeStore.set(mode);
   };
+
+  $effect(() => {
+    const nextSearch = $catalogSearchInputStore.trim();
+    const timeoutId = setTimeout(() => {
+      catalogSearchQueryStore.set(nextSearch);
+    }, SEARCH_DEBOUNCE_MS);
+
+    return () => {
+      clearTimeout(timeoutId);
+    };
+  });
 </script>
 
 <header class="top-nav">
@@ -53,7 +66,7 @@
             type="text"
             class="nav-search-input"
             placeholder='Try: "usb-c to c, 240w, braided, anker"'
-            bind:value={$catalogSearchStore}
+            bind:value={$catalogSearchInputStore}
           >
         </label>
       {/if}

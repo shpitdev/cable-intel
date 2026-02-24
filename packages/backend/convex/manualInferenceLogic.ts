@@ -187,6 +187,8 @@ const DATA_ONLY_REGEX =
   /\b(?:data\s*only|sync\s*only|non\s*charging|no\s+charging|without\s+charging)\b/i;
 const CHARGING_REGEX =
   /\b(?:charging|charge|power\s*delivery|\bpd\b|\d{1,3}\s*w)\b/i;
+const FOLLOW_UP_MIN_CONFIDENCE_THRESHOLD = 0.5;
+const FOLLOW_UP_MAX_QUESTIONS = 1;
 
 const trimInput = (value: string): string => {
   return value.replaceAll(WHITESPACE_REGEX, " ").trim();
@@ -700,19 +702,14 @@ const getQuestionFromCategory = (
 const buildFollowUpQuestions = (
   uncertainties: readonly FollowUpCategory[]
 ): FollowUpQuestion[] => {
-  const prioritized: FollowUpCategory[] = [
-    "power",
-    "data",
-    "video",
-    "connector",
-  ];
+  const prioritized: FollowUpCategory[] = ["power", "data", "connector"];
 
   const uniqueUncertainties = unique(uncertainties);
   const ordered = prioritized.filter((category) => {
     return uniqueUncertainties.includes(category);
   });
 
-  return ordered.slice(0, 3).map((category, index) => {
+  return ordered.slice(0, FOLLOW_UP_MAX_QUESTIONS).map((category, index) => {
     return getQuestionFromCategory(category, index);
   });
 };
@@ -733,11 +730,6 @@ const deriveOpenUncertainties = (draft: ManualDraft): FollowUpCategory[] => {
     draft.usbGeneration.trim().length > 0 || draft.gbps.trim().length > 0;
   if (!hasDataSignal) {
     uncertainties.push("data");
-  }
-
-  const hasVideoSignal = draft.videoSupport !== "unknown";
-  if (!hasVideoSignal) {
-    uncertainties.push("video");
   }
 
   return uncertainties;
@@ -763,8 +755,6 @@ export const mergeInferenceSignals = (args: {
     ...deriveOpenUncertainties(draft),
   ]);
 
-  const questions = buildFollowUpQuestions(mergedUncertainties);
-
   const deterministicWeight = llmResult ? 0.35 : 1;
   const llmWeight = llmResult ? 0.65 : 0;
   const confidence = toClampedConfidence(
@@ -777,8 +767,18 @@ export const mergeInferenceSignals = (args: {
     ? llmResult.notes
     : deterministic.notes.join(" ");
 
+  const missingLabelSignals =
+    draft.watts.trim().length === 0 &&
+    !draft.dataOnly &&
+    draft.usbGeneration.trim().length === 0 &&
+    draft.gbps.trim().length === 0;
+  const shouldAskFollowUp =
+    missingLabelSignals && confidence < FOLLOW_UP_MIN_CONFIDENCE_THRESHOLD;
+  const questions = shouldAskFollowUp
+    ? buildFollowUpQuestions(mergedUncertainties)
+    : [];
   const status: ManualInferenceStatus =
-    questions.length > 0 && confidence < 0.78 ? "needs_followup" : "ready";
+    shouldAskFollowUp && questions.length > 0 ? "needs_followup" : "ready";
 
   const normalizedPrompt = trimInput(prompt);
 

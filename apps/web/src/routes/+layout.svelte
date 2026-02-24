@@ -1,6 +1,7 @@
 <script lang="ts">
   import "../app.css";
   import { setupConvex } from "convex-svelte";
+  import { browser } from "$app/environment";
   import { page } from "$app/state";
   import { PUBLIC_CONVEX_URL } from "$env/static/public";
   import Header from "../components/header.svelte";
@@ -14,8 +15,10 @@
   const openGraphImageUrl = $derived(
     new URL("/opengraph.svg", page.url).toString()
   );
+  const isConvexDisabled =
+    !browser || PUBLIC_CONVEX_URL === PLACEHOLDER_CONVEX_URL;
   setupConvex(PUBLIC_CONVEX_URL, {
-    disabled: PUBLIC_CONVEX_URL === PLACEHOLDER_CONVEX_URL,
+    disabled: isConvexDisabled,
   });
 </script>
 

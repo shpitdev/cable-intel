@@ -75,13 +75,19 @@
   const hasProfileImage = (profileValue: CableProfile): boolean => {
     return Boolean(getPrimaryImage(profileValue));
   };
+
+  const isCatalogProfile = (profileValue: CableProfile): boolean => {
+    return profileValue.source === "catalog";
+  };
 </script>
 
 <section class="panel panel-soft fade-in delay-2">
   <div class="flex items-center justify-between gap-3">
     <div class="flex items-center gap-2">
       <span class="flow-step">1</span>
-      <h3 class="panel-title">Cable Profile</h3>
+      <h3 class="panel-title">
+        {profile?.source === "markings" ? "Live Cable Profile" : "Cable Profile"}
+      </h3>
     </div>
     {#if profile?.source}
       <span class="tag">{profile.source}</span>
@@ -93,18 +99,24 @@
       Select a cable from catalog or enter markings to populate this summary.
     </p>
   {:else}
-    <div class="profile-media mt-2">
-      {#if hasProfileImage(profile)}
-        <img
-          src={getPrimaryImage(profile)}
-          alt={`${getDisplayName(profile)} image`}
-          class="profile-image h-full w-full object-contain"
-          loading="lazy"
-        >
-      {:else}
-        <p class="note">Catalog image not available for this cable.</p>
-      {/if}
-    </div>
+    {#if isCatalogProfile(profile)}
+      <div class="profile-media mt-2">
+        {#if hasProfileImage(profile)}
+          <img
+            src={getPrimaryImage(profile)}
+            alt={`${getDisplayName(profile)} image`}
+            class="profile-image h-full w-full object-contain"
+            loading="lazy"
+          >
+        {:else}
+          <p class="note">Catalog image not available for this cable.</p>
+        {/if}
+      </div>
+    {:else}
+      <p class="note mt-2">
+        This summary updates live from inferred/manual entry values.
+      </p>
+    {/if}
 
     <p class="mt-2 text-sm font-semibold text-[color:var(--ink-strong)]">
       {getDisplayName(profile)}

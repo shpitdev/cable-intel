@@ -84,7 +84,7 @@ Web app: `http://localhost:5173`
 
 ## Useful Commands
 
-- `bun run dev`: run workspace dev tasks
+- `bun run dev`: run backend + web dev servers
 - `bun run build`: run workspace build tasks
 - `bun run check-types`: run type checks
 - `bun run check`: run Ultracite checks
