@@ -65,7 +65,8 @@ describe("manualInference", () => {
     });
 
     expect(ensured.status).toBe("idle");
-    expect(ensured.draft.connectorFrom).toBe("USB-C");
+    expect(ensured.draft.connectorFrom).toBe("Unknown");
+    expect(ensured.draft.connectorTo).toBe("Unknown");
 
     await t.mutation(api.manualInference.patchDraft, {
       workspaceId: "workspace-one",

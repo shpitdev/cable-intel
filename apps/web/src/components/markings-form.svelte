@@ -70,7 +70,7 @@
     <input
       type="text"
       class="field-input"
-      placeholder="60, 100, 240"
+      placeholder="60W, 100W, 240W or 60-240W"
       value={values.watts}
       oninput={(event) =>
         onChange({ watts: (event.currentTarget as HTMLInputElement).value })}
@@ -87,13 +87,24 @@
     <input
       type="text"
       class="field-input"
-      placeholder="USB4, TB4, USB 3.2 Gen 2"
+      list="usb-generation-markings"
+      placeholder="USB4 / TB4, USB 3.2 Gen 2, USB 2.0"
       value={values.usbGeneration}
       oninput={(event) =>
         onChange({
           usbGeneration: (event.currentTarget as HTMLInputElement).value,
         })}
     >
+    <datalist id="usb-generation-markings">
+      <option value="USB4 v2 / Thunderbolt 5"></option>
+      <option value="USB4 / Thunderbolt 4"></option>
+      <option value="Thunderbolt 3"></option>
+      <option value="USB 3.2 Gen 2x2"></option>
+      <option value="USB 3.2 Gen 2"></option>
+      <option value="USB 3.x"></option>
+      <option value="USB 2.0"></option>
+      <option value="USB 2.0 (Lightning ceiling)"></option>
+    </datalist>
   </label>
 
   <label class="field">

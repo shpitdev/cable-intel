@@ -140,4 +140,38 @@ describe("buildProfileFromMarkings", () => {
     expect(profile.video.explicitlySupported).toBe(true);
     expect(profile.video.maxRefreshHz).toBe(60);
   });
+
+  it("accepts wattage ranges/lists and uses the highest parsed wattage", () => {
+    const draft: MarkingsDraft = {
+      connectorFrom: "USB-C",
+      connectorTo: "USB-C",
+      watts: "60, 100, 240W",
+      usbGeneration: "",
+      gbps: "",
+      videoSupport: "unknown",
+      maxResolution: "",
+      maxRefreshHz: "",
+      dataOnly: false,
+    };
+
+    const profile = buildProfileFromMarkings(draft);
+    expect(profile.power.maxWatts).toBe(240);
+  });
+
+  it("uses the highest inferred generation class when multiple markings are present", () => {
+    const draft: MarkingsDraft = {
+      connectorFrom: "USB-C",
+      connectorTo: "USB-C",
+      watts: "",
+      usbGeneration: "USB 3.2 Gen 2 / USB4 / TB4",
+      gbps: "",
+      videoSupport: "unknown",
+      maxResolution: "",
+      maxRefreshHz: "",
+      dataOnly: false,
+    };
+
+    const profile = buildProfileFromMarkings(draft);
+    expect(profile.data.maxGbps).toBe(40);
+  });
 });

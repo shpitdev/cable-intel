@@ -23,6 +23,23 @@ describe("manualInferenceLogic", () => {
     expect(deterministic.confidence).toBeGreaterThan(0.7);
   });
 
+  it("does not auto-fill both connector ends from a single connector mention", () => {
+    const deterministic = inferDeterministic("usb-c braided charging cable");
+
+    expect(deterministic.patch.connectorFrom).toBeUndefined();
+    expect(deterministic.patch.connectorTo).toBeUndefined();
+  });
+
+  it("normalizes misspelled lightning mentions and applies lightning data ceiling", () => {
+    const deterministic = inferDeterministic("usb c to lightening apple cable");
+
+    expect(deterministic.patch.connectorFrom).toBe("USB-C");
+    expect(deterministic.patch.connectorTo).toBe("Lightning");
+    expect(deterministic.patch.usbGeneration).toContain("USB 2.0");
+    expect(deterministic.patch.gbps).toBe("0.48");
+    expect(deterministic.patch.videoSupport).toBe("no");
+  });
+
   it("merges deterministic + llm patch while preserving deterministic signals", () => {
     const deterministic = inferDeterministic(
       "USB-C to USB-C braided cable, 240W PD"
@@ -86,5 +103,27 @@ describe("manualInferenceLogic", () => {
     );
 
     expect(answered.videoSupport).toBe("yes");
+  });
+
+  it("accepts flexible llm output shapes and normalizes them", () => {
+    const llm = parseManualInferenceLlmOutput({
+      confidence: "0.88",
+      draftPatch: {
+        connectorFrom: "type-c",
+        connectorTo: "lightening",
+        usbGeneration: " usb4 ",
+        watts: 240,
+      },
+      notes: 12_345,
+      uncertainties: ["Display", "charging"],
+      extra: "ignored",
+    });
+
+    expect(llm.confidence).toBe(0.88);
+    expect(llm.draftPatch.connectorFrom).toBe("USB-C");
+    expect(llm.draftPatch.connectorTo).toBe("Lightning");
+    expect(llm.draftPatch.watts).toBe("240");
+    expect(llm.uncertainties).toEqual(["video", "power"]);
+    expect(llm.notes).toBe("12345");
   });
 });

@@ -136,11 +136,13 @@ const buildManualInferencePrompt = (args: {
 
 const MANUAL_INFERENCE_SYSTEM_PROMPT = [
   "You classify cable hints into structured manual-entry fields.",
-  "Use conservative extraction: only include values supported by the user text.",
-  "Return a patch, not a full object. Omit uncertain fields.",
-  "Confidence must be 0..1 and reflect certainty, not optimism.",
+  "Prefer best-effort extraction: infer likely values when text is suggestive, then lower confidence and list uncertainties.",
+  "Return a patch, not a full object.",
+  "Confidence must be 0..1 and reflect certainty.",
   "Uncertainties must be limited to connector, power, data, video.",
-  "If no valid signal exists for a field, leave it out of draftPatch.",
+  "If a field is uncertain, still provide your best guess when probable instead of leaving everything blank.",
+  "Connector values must be one of USB-C, USB-A, Lightning, Micro-USB, Unknown.",
+  "videoSupport must be unknown, yes, or no.",
 ].join(" ");
 const MANUAL_INFERENCE_LLM_TIMEOUT_MS = 8000;
 
@@ -498,6 +500,7 @@ const tryLlmInference = async (args: {
   try {
     const { object } = await generateObject({
       abortSignal: abortController.signal,
+      maxRetries: 1,
       model: gateway(providerConfig.model),
       schema: manualInferenceLlmOutputSchema,
       system: MANUAL_INFERENCE_SYSTEM_PROMPT,
@@ -576,6 +579,11 @@ export const submitPrompt = action({
       deterministic,
       prompt: normalizedPrompt,
     });
+    if (llmResult.error) {
+      console.warn(
+        `[manualInference.submitPrompt] LLM inference degraded for ${normalizedWorkspaceId}: ${llmResult.error}`
+      );
+    }
 
     const latestSession = await ctx.runQuery(
       internal.manualInference.getSessionInternal,
@@ -612,11 +620,7 @@ export const submitPrompt = action({
         draft: mergedDraft,
         followUpQuestions: mergedQuestions,
         llmUsed: Boolean(llmResult.llmOutput),
-        notes: llmResult.error
-          ? [merged.notes, `LLM unavailable: ${llmResult.error}`]
-              .filter(Boolean)
-              .join(" ")
-          : merged.notes,
+        notes: merged.notes,
         prompt: merged.prompt,
         status: merged.status,
       }
