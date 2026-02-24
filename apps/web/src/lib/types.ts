@@ -131,8 +131,8 @@ export interface LabelRecommendation {
 }
 
 export const DEFAULT_MARKINGS_DRAFT: MarkingsDraft = {
-  connectorFrom: "USB-C",
-  connectorTo: "USB-C",
+  connectorFrom: "Unknown",
+  connectorTo: "Unknown",
   watts: "",
   usbGeneration: "",
   gbps: "",

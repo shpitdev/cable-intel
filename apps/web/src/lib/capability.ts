@@ -16,6 +16,28 @@ const CONNECTOR_ALIASES: Record<string, ConnectorType> = {
 };
 const RESOLUTION_P_REGEX = /(\d{3,4})p/;
 const LIGHTNING_MAX_GBPS = 0.48;
+const NUMERIC_TOKEN_REGEX = /\d+(?:\.\d+)?/g;
+const GBPS_REGEX = /(\d+(?:\.\d+)?)\s*(?:g(?:b(?:it)?(?:\/s)?|bps))/gi;
+
+const GENERATION_GBPS_HINTS: Array<{ gbps: number; regex: RegExp }> = [
+  {
+    gbps: 80,
+    regex: /\b(?:usb\s*4\s*(?:v2|2\.0)|thunderbolt\s*5|tb\s*5)\b/i,
+  },
+  { gbps: 40, regex: /\b(?:usb\s*4|thunderbolt\s*4|tb\s*4)\b/i },
+  { gbps: 40, regex: /\b(?:thunderbolt\s*3|tb\s*3)\b/i },
+  { gbps: 20, regex: /\b(?:usb\s*)?3\.2\s*gen\s*2x2\b/i },
+  {
+    gbps: 10,
+    regex: /\b(?:usb\s*(?:3\.2\s*gen\s*2|3\.1\s*gen\s*2)|(?:usb\s*)?3\.2)\b/i,
+  },
+  {
+    gbps: 5,
+    regex:
+      /\b(?:usb\s*(?:3\.2\s*gen\s*1|3\.1\s*gen\s*1|3\.0)|(?:usb\s*)?3\.0)\b/i,
+  },
+  { gbps: LIGHTNING_MAX_GBPS, regex: /\b(?:usb\s*2(?:\.0)?|480\s*mbps)\b/i },
+];
 
 const clamp = (value: number, min: number, max: number): number => {
   return Math.min(max, Math.max(min, value));
@@ -35,16 +57,19 @@ export const normalizeConnector = (value?: string): ConnectorType => {
 };
 
 export const parsePositiveNumber = (value: string): number | undefined => {
-  if (!value.trim()) {
+  const normalized = value.trim();
+  if (!normalized) {
     return undefined;
   }
 
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed < 0) {
+  const matches = [...normalized.matchAll(NUMERIC_TOKEN_REGEX)]
+    .map((match) => Number(match[0]))
+    .filter((number) => Number.isFinite(number) && number >= 0);
+  if (matches.length === 0) {
     return undefined;
   }
 
-  return parsed;
+  return Math.max(...matches);
 };
 
 export const inferMaxGbpsFromGeneration = (
@@ -55,26 +80,27 @@ export const inferMaxGbpsFromGeneration = (
   }
 
   const normalized = generation.toLowerCase();
-  if (
-    normalized.includes("tb") ||
-    normalized.includes("thunderbolt") ||
-    normalized.includes("usb4")
-  ) {
-    return 40;
+  let inferredFromGeneration: number | undefined;
+  for (const hint of GENERATION_GBPS_HINTS) {
+    if (hint.regex.test(normalized)) {
+      inferredFromGeneration =
+        inferredFromGeneration === undefined
+          ? hint.gbps
+          : Math.max(inferredFromGeneration, hint.gbps);
+    }
   }
-  if (normalized.includes("20gbps") || normalized.includes("gen 2x2")) {
-    return 20;
+
+  const explicitGbps = [...normalized.matchAll(GBPS_REGEX)]
+    .map((match) => Number(match[1]))
+    .filter((number) => Number.isFinite(number) && number > 0);
+  if (explicitGbps.length > 0) {
+    const maxExplicitGbps = Math.max(...explicitGbps);
+    return inferredFromGeneration === undefined
+      ? maxExplicitGbps
+      : Math.max(maxExplicitGbps, inferredFromGeneration);
   }
-  if (normalized.includes("10gbps") || normalized.includes("gen 2")) {
-    return 10;
-  }
-  if (normalized.includes("5gbps") || normalized.includes("gen 1")) {
-    return 5;
-  }
-  if (normalized.includes("usb2") || normalized.includes("480mbps")) {
-    return 0.48;
-  }
-  return undefined;
+
+  return inferredFromGeneration;
 };
 
 export const getConnectorDataCeilingGbps = (

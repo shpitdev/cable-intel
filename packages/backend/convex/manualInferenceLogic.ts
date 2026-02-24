@@ -34,6 +34,84 @@ export const manualInferenceStatusSchema = z.enum(
 );
 export const confidenceBandSchema = z.enum(CONFIDENCE_BAND_VALUES);
 
+const normalizeConnectorLabel = (
+  value: string
+): (typeof CONNECTOR_VALUES)[number] => {
+  const normalized = value.toLowerCase().replaceAll(/[^a-z0-9]+/g, "");
+  if (normalized.includes("usbc") || normalized.includes("typec")) {
+    return "USB-C";
+  }
+  if (normalized.includes("usba")) {
+    return "USB-A";
+  }
+  if (normalized.includes("lightning") || normalized.includes("lightening")) {
+    return "Lightning";
+  }
+  if (normalized.includes("microusb")) {
+    return "Micro-USB";
+  }
+  return "Unknown";
+};
+
+const normalizeVideoSupportLabel = (
+  value: string
+): (typeof VIDEO_SUPPORT_VALUES)[number] => {
+  const normalized = value.trim().toLowerCase();
+  if (
+    normalized === "yes" ||
+    normalized === "true" ||
+    normalized === "supported"
+  ) {
+    return "yes";
+  }
+  if (
+    normalized === "no" ||
+    normalized === "false" ||
+    normalized === "unsupported"
+  ) {
+    return "no";
+  }
+  return "unknown";
+};
+
+const normalizeFollowUpCategoryLabel = (
+  value: string
+): (typeof FOLLOW_UP_CATEGORY_VALUES)[number] | undefined => {
+  const normalized = value.trim().toLowerCase();
+  if (normalized.includes("connector")) {
+    return "connector";
+  }
+  if (
+    normalized.includes("power") ||
+    normalized.includes("charge") ||
+    normalized.includes("charg") ||
+    normalized.includes("watt")
+  ) {
+    return "power";
+  }
+  if (
+    normalized.includes("data") ||
+    normalized.includes("generation") ||
+    normalized.includes("usb")
+  ) {
+    return "data";
+  }
+  if (normalized.includes("video") || normalized.includes("display")) {
+    return "video";
+  }
+  return undefined;
+};
+
+const coerceLlmText = (value: unknown): string | undefined => {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(value);
+  }
+  return undefined;
+};
+
 export const manualDraftSchema = z
   .object({
     connectorFrom: connectorSchema,
@@ -62,6 +140,38 @@ export const manualDraftPatchSchema = z
   })
   .strict();
 
+const llmConnectorSchema = z.preprocess((value) => {
+  if (typeof value !== "string") {
+    return value;
+  }
+  return normalizeConnectorLabel(value);
+}, connectorSchema);
+
+const llmVideoSupportSchema = z.preprocess((value) => {
+  if (typeof value !== "string") {
+    return value;
+  }
+  return normalizeVideoSupportLabel(value);
+}, videoSupportSchema);
+
+const llmPatchTextSchema = z.preprocess((value) => {
+  return coerceLlmText(value);
+}, z.string());
+
+const manualDraftPatchLlmSchema = z
+  .object({
+    connectorFrom: llmConnectorSchema.optional(),
+    connectorTo: llmConnectorSchema.optional(),
+    dataOnly: z.boolean().optional(),
+    gbps: llmPatchTextSchema.optional(),
+    maxRefreshHz: llmPatchTextSchema.optional(),
+    maxResolution: llmPatchTextSchema.optional(),
+    usbGeneration: llmPatchTextSchema.optional(),
+    videoSupport: llmVideoSupportSchema.optional(),
+    watts: llmPatchTextSchema.optional(),
+  })
+  .passthrough();
+
 export const followUpQuestionSchema = z
   .object({
     answer: followUpAnswerSchema.optional(),
@@ -78,16 +188,36 @@ export const followUpQuestionSchema = z
 
 export const manualInferenceLlmOutputSchema = z
   .object({
-    confidence: z.number().min(0).max(1),
-    draftPatch: manualDraftPatchSchema,
-    notes: z.string().trim().min(1).max(240).optional(),
-    uncertainties: z.array(followUpCategorySchema).max(4).default([]),
+    confidence: z.coerce.number().min(0).max(1).catch(0.45),
+    draftPatch: manualDraftPatchLlmSchema.default({}),
+    notes: z
+      .preprocess((value) => coerceLlmText(value), z.string().trim().min(1))
+      .optional(),
+    uncertainties: z
+      .preprocess((value) => {
+        if (!Array.isArray(value)) {
+          return [];
+        }
+        return value
+          .map((item) => {
+            if (typeof item !== "string") {
+              return undefined;
+            }
+            return normalizeFollowUpCategoryLabel(item);
+          })
+          .filter(
+            (item): item is (typeof FOLLOW_UP_CATEGORY_VALUES)[number] => {
+              return item !== undefined;
+            }
+          );
+      }, z.array(followUpCategorySchema))
+      .default([]),
   })
-  .strict();
+  .passthrough();
 
 export const DEFAULT_MANUAL_DRAFT: ManualDraft = {
-  connectorFrom: "USB-C",
-  connectorTo: "USB-C",
+  connectorFrom: "Unknown",
+  connectorTo: "Unknown",
   dataOnly: false,
   gbps: "",
   maxRefreshHz: "",
@@ -99,11 +229,12 @@ export const DEFAULT_MANUAL_DRAFT: ManualDraft = {
 
 const WHITESPACE_REGEX = /\s+/g;
 const CONNECTOR_PAIR_REGEX =
-  /\b(?:usb\s*-?\s*c|type\s*-?\s*c|usbc|usb\s*-?\s*a|usba|lightning|micro\s*-?\s*usb|microusb)\b\s*(?:to|\u2192|->|\/)\s*\b(?:usb\s*-?\s*c|type\s*-?\s*c|usbc|usb\s*-?\s*a|usba|lightning|micro\s*-?\s*usb|microusb)\b/gi;
-const CONNECTOR_SPLIT_REGEX = /\b(?:to|\u2192|->|\/)\b/i;
+  /\b(?:usb\s*-?\s*c|type\s*-?\s*c|usbc|usb\s*-?\s*a|usba|lightning|lightening|micro\s*-?\s*usb|microusb)\b\s*(?:to|\u2192|->|\/)\s*\b(?:usb\s*-?\s*c|type\s*-?\s*c|usbc|usb\s*-?\s*a|usba|lightning|lightening|micro\s*-?\s*usb|microusb)\b/gi;
+const CONNECTOR_SPLIT_REGEX = /\s*(?:to|\u2192|->|\/)\s*/i;
 const WATTS_REGEX = /\b(\d{1,3})(?:\s*)(?:w|watts?)\b/gi;
 const GIGABIT_REGEX = /\b(\d{1,3}(?:\.\d+)?)\s*(?:gbps|gbit\/s|gb\/s)\b/i;
 const REFRESH_HZ_REGEX = /\b(\d{2,3})\s*hz\b/i;
+const LIGHTNING_ALIAS_REGEX = /\b(?:lightning|lightening)\b/i;
 
 const CONNECTOR_MATCHERS: Array<{
   connector: ConnectorType;
@@ -119,7 +250,7 @@ const CONNECTOR_MATCHERS: Array<{
   },
   {
     connector: "Lightning",
-    regex: /\blightning\b/gi,
+    regex: /\b(?:lightning|lightening)\b/gi,
   },
   {
     connector: "Micro-USB",
@@ -135,27 +266,27 @@ const GENERATION_HINTS: Array<{
   {
     impliedGbps: "80",
     label: "USB4 v2 / Thunderbolt 5",
-    regex: /\b(?:usb\s*4\s*(?:v2|2\.0)?|thunderbolt\s*5|tb5)\b/i,
+    regex: /\b(?:usb\s*4\s*(?:v2|2\.0)|thunderbolt\s*5|tb\s*5)\b/i,
   },
   {
     impliedGbps: "40",
     label: "USB4 / Thunderbolt 4",
-    regex: /\b(?:usb\s*4|thunderbolt\s*4|tb4)\b/i,
+    regex: /\b(?:usb\s*4|thunderbolt\s*4|tb\s*4)\b/i,
   },
   {
     impliedGbps: "40",
     label: "Thunderbolt 3",
-    regex: /\b(?:thunderbolt\s*3|tb3)\b/i,
+    regex: /\b(?:thunderbolt\s*3|tb\s*3)\b/i,
   },
   {
     impliedGbps: "20",
     label: "USB 3.2 Gen 2x2",
-    regex: /\busb\s*3\.2\s*gen\s*2x2\b/i,
+    regex: /\b(?:usb\s*)?3\.2\s*gen\s*2x2\b/i,
   },
   {
     impliedGbps: "10",
     label: "USB 3.2 Gen 2",
-    regex: /\busb\s*(?:3\.2\s*gen\s*2|3\.1\s*gen\s*2)\b/i,
+    regex: /\b(?:usb\s*(?:3\.2\s*gen\s*2|3\.1\s*gen\s*2)|(?:usb\s*)?3\.2)\b/i,
   },
   {
     impliedGbps: "5",
@@ -199,20 +330,7 @@ const unique = <T extends string>(values: readonly T[]): T[] => {
 };
 
 const normalizeConnectorToken = (value: string): ConnectorType => {
-  const normalized = value.toLowerCase().replaceAll(/[^a-z0-9]+/g, "");
-  if (normalized.includes("usbc") || normalized.includes("typec")) {
-    return "USB-C";
-  }
-  if (normalized.includes("usba")) {
-    return "USB-A";
-  }
-  if (normalized.includes("lightning")) {
-    return "Lightning";
-  }
-  if (normalized.includes("microusb")) {
-    return "Micro-USB";
-  }
-  return "Unknown";
+  return normalizeConnectorLabel(value);
 };
 
 const matchConnectorPair = (
@@ -471,9 +589,9 @@ const applyConnectorSignals = (
   if (connectorMentions.length === 1) {
     const only = connectorMentions[0];
     if (only) {
-      patch.connectorFrom = only;
-      patch.connectorTo = only;
-      notes.push(`Single connector mention detected (${only}).`);
+      notes.push(
+        `Single connector mention detected (${only}); waiting for both connector ends before auto-filling.`
+      );
     }
     return connectorMentions.length;
   }
@@ -570,6 +688,24 @@ const applyVideoSignals = (
   notes.push(`Refresh-rate marker detected (${refreshHz}Hz).`);
 };
 
+const applyLightningCeilingSignals = (
+  patch: ManualDraftPatch,
+  notes: string[]
+): void => {
+  const hasLightningEndpoint =
+    patch.connectorFrom === "Lightning" || patch.connectorTo === "Lightning";
+  if (!hasLightningEndpoint) {
+    return;
+  }
+
+  patch.gbps = "0.48";
+  patch.usbGeneration = "USB 2.0 (Lightning ceiling)";
+  patch.videoSupport = "no";
+  notes.push(
+    "Lightning connector path detected; capped data class to USB 2.0 and disabled video assumptions."
+  );
+};
+
 const inferDeterministicSignals = (
   rawPrompt: string
 ): {
@@ -587,6 +723,7 @@ const inferDeterministicSignals = (
   applyPowerSignals(prompt, patch, notes);
   applyDataSignals(prompt, patch, notes);
   applyVideoSignals(prompt, patch, notes);
+  applyLightningCeilingSignals(patch, notes);
 
   const resolvedCategories: FollowUpCategory[] = [];
   if (patch.connectorFrom && patch.connectorTo) {
@@ -634,13 +771,12 @@ const getQuestionFromCategory = (
     return {
       id,
       category,
-      prompt: "Does the cable label mention 100W or higher charging?",
+      prompt: "Does the cable label mention any charging wattage?",
       detail:
-        "Answering yes sets a 100W baseline. You can edit the exact value afterward.",
+        "Answering yes confirms charging support. You can fill exact wattage afterward.",
       status: "pending",
       applyIfYes: {
         dataOnly: false,
-        watts: "100",
       },
       applyIfNo: {
         dataOnly: false,
@@ -702,7 +838,7 @@ const getQuestionFromCategory = (
 const buildFollowUpQuestions = (
   uncertainties: readonly FollowUpCategory[]
 ): FollowUpQuestion[] => {
-  const prioritized: FollowUpCategory[] = ["power", "data", "connector"];
+  const prioritized: FollowUpCategory[] = ["connector", "data", "power"];
 
   const uniqueUncertainties = unique(uncertainties);
   const ordered = prioritized.filter((category) => {
@@ -753,7 +889,14 @@ export const mergeInferenceSignals = (args: {
     ...deterministic.uncertainties,
     ...(llmResult?.uncertainties ?? []),
     ...deriveOpenUncertainties(draft),
-  ]);
+  ]).filter((category) => {
+    if (category !== "power") {
+      return true;
+    }
+    const hasLightningEndpoint =
+      draft.connectorFrom === "Lightning" || draft.connectorTo === "Lightning";
+    return !(hasLightningEndpoint || LIGHTNING_ALIAS_REGEX.test(prompt));
+  });
 
   const deterministicWeight = llmResult ? 0.35 : 1;
   const llmWeight = llmResult ? 0.65 : 0;
@@ -822,7 +965,18 @@ export const bumpConfidenceAfterAnswer = (
 export const parseManualInferenceLlmOutput = (
   value: unknown
 ): ManualInferenceLlmOutput => {
-  return manualInferenceLlmOutputSchema.parse(value);
+  const parsed = manualInferenceLlmOutputSchema.parse(value);
+  const normalizedNotes =
+    typeof parsed.notes === "string"
+      ? trimInput(parsed.notes).slice(0, 240)
+      : undefined;
+
+  return {
+    confidence: toClampedConfidence(parsed.confidence),
+    draftPatch: normalizePatch(parsed.draftPatch),
+    notes: normalizedNotes || undefined,
+    uncertainties: unique(parsed.uncertainties).slice(0, 4),
+  };
 };
 
 export const toConfidenceBand = (confidence: number): ConfidenceBand => {
