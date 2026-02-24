@@ -1,6 +1,6 @@
 <script lang="ts">
   import { api } from "@cable-intel/backend/convex/_generated/api";
-  import { useQuery } from "convex-svelte";
+  import { useConvexClient, useQuery } from "convex-svelte";
   import { onMount } from "svelte";
   import { recommendLabels } from "$lib/labeling";
   import {
@@ -24,6 +24,14 @@
 
   const CATALOG_LIMIT = 100;
   const SEARCH_DEBOUNCE_MS = 120;
+  const DRAFT_SYNC_DEBOUNCE_MS = 180;
+  const CONVEX_REQUEST_TIMEOUT_MS = 12_000;
+  const CONVEX_REQUEST_TIMEOUT_MESSAGE =
+    "Convex request timed out before acknowledgement.";
+  const TRANSIENT_CONVEX_RETRY_DELAY_MS = 700;
+  const MANUAL_SUBMIT_RECOVERY_POLL_MS = 250;
+  const MANUAL_SUBMIT_RECOVERY_TIMEOUT_MS = 6000;
+  const WORKSPACE_STORAGE_KEY = "cable-intel-workspace-id";
   const MOBILE_FACET_QUERY = "(max-width: 1179px)";
   const FACET_DIMENSIONS = [
     "brand",
@@ -115,6 +123,13 @@
     color: [],
     price: [],
   };
+  const TRANSIENT_CONVEX_ERROR_SNIPPETS = [
+    "connection lost while",
+    "failed to fetch",
+    "fetch failed",
+    "network error",
+    "timed out before acknowledgement",
+  ] as const;
 
   interface FacetOption {
     count: number;
@@ -123,11 +138,17 @@
     value: string;
   }
 
+  const convex = useConvexClient();
+
   let debouncedCatalogSearch = $state("");
   const topCablesQuery = useQuery(api.ingestQueries.getTopCables, () => ({
     limit: CATALOG_LIMIT,
     searchQuery: debouncedCatalogSearch || undefined,
   }));
+  let workspaceId = $state("");
+  const manualSessionQuery = useQuery(api.manualInference.getSession, () =>
+    workspaceId ? { workspaceId } : "skip"
+  );
 
   let selectedVariantId = $state("");
   let isFacetDrawerOpen = $state(true);
@@ -135,6 +156,12 @@
     ...DEFAULT_FACET_SELECTIONS,
   });
   let markings = $state<MarkingsDraft>({ ...DEFAULT_MARKINGS_DRAFT });
+  let manualPrompt = $state("");
+  let manualUiError = $state("");
+  let isSubmittingManualPrompt = $state(false);
+  let pendingQuestionIds = $state<string[]>([]);
+  let pendingDraftPatch = $state<Partial<MarkingsDraft>>({});
+  let draftSyncTimeoutId = $state<ReturnType<typeof setTimeout> | null>(null);
 
   $effect(() => {
     const nextSearch = $catalogSearchStore.trim();
@@ -146,6 +173,135 @@
       clearTimeout(timeoutId);
     };
   });
+
+  const toUiError = (error: unknown): string => {
+    if (error instanceof Error) {
+      return error.message;
+    }
+    return String(error);
+  };
+
+  const isTransientConvexTransportError = (error: unknown): boolean => {
+    const normalized = toUiError(error).toLowerCase();
+    return TRANSIENT_CONVEX_ERROR_SNIPPETS.some((snippet) => {
+      return normalized.includes(snippet);
+    });
+  };
+
+  const waitMs = async (durationMs: number): Promise<void> => {
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, durationMs);
+    });
+  };
+
+  const withConvexRequestTimeout = async (
+    operation: Promise<unknown>
+  ): Promise<unknown> => {
+    return await new Promise<unknown>((resolve, reject) => {
+      const timeoutId = setTimeout(() => {
+        reject(new Error(CONVEX_REQUEST_TIMEOUT_MESSAGE));
+      }, CONVEX_REQUEST_TIMEOUT_MS);
+
+      operation
+        .then((value) => {
+          clearTimeout(timeoutId);
+          resolve(value);
+        })
+        .catch((error: unknown) => {
+          clearTimeout(timeoutId);
+          reject(error);
+        });
+    });
+  };
+
+  const runWithTransientConvexRetry = async (
+    operation: () => Promise<unknown>
+  ): Promise<unknown> => {
+    try {
+      return await withConvexRequestTimeout(operation());
+    } catch (error) {
+      if (!isTransientConvexTransportError(error)) {
+        throw error;
+      }
+      await waitMs(TRANSIENT_CONVEX_RETRY_DELAY_MS);
+      return await withConvexRequestTimeout(operation());
+    }
+  };
+
+  const createWorkspaceId = (): string => {
+    if (
+      typeof crypto !== "undefined" &&
+      typeof crypto.randomUUID === "function"
+    ) {
+      return `workspace-${crypto.randomUUID()}`;
+    }
+    return `workspace-${Date.now().toString(36)}`;
+  };
+
+  const resolveWorkspaceId = (): string => {
+    const stored = window.localStorage.getItem(WORKSPACE_STORAGE_KEY)?.trim();
+    if (stored) {
+      return stored;
+    }
+
+    const generated = createWorkspaceId();
+    window.localStorage.setItem(WORKSPACE_STORAGE_KEY, generated);
+    return generated;
+  };
+
+  const ensureManualSession = async (
+    nextWorkspaceId: string
+  ): Promise<void> => {
+    try {
+      await runWithTransientConvexRetry(async () => {
+        await convex.mutation(api.manualInference.ensureSession, {
+          workspaceId: nextWorkspaceId,
+        });
+      });
+    } catch (error) {
+      manualUiError = `Failed to initialize manual session: ${toUiError(error)}`;
+    }
+  };
+
+  const flushDraftPatch = async (): Promise<boolean> => {
+    if (!workspaceId || Object.keys(pendingDraftPatch).length === 0) {
+      return true;
+    }
+
+    const patch = pendingDraftPatch;
+    pendingDraftPatch = {};
+    try {
+      await runWithTransientConvexRetry(async () => {
+        await convex.mutation(api.manualInference.patchDraft, {
+          workspaceId,
+          patch,
+        });
+      });
+    } catch (error) {
+      pendingDraftPatch = {
+        ...patch,
+        ...pendingDraftPatch,
+      };
+      manualUiError = `Failed to sync manual fields: ${toUiError(error)}`;
+      return false;
+    }
+    return true;
+  };
+
+  const scheduleDraftSync = (): void => {
+    if (!workspaceId) {
+      return;
+    }
+
+    if (draftSyncTimeoutId) {
+      clearTimeout(draftSyncTimeoutId);
+    }
+
+    draftSyncTimeoutId = setTimeout(() => {
+      flushDraftPatch();
+      draftSyncTimeoutId = null;
+    }, DRAFT_SYNC_DEBOUNCE_MS);
+  };
 
   onMount(() => {
     const mediaQuery = window.matchMedia(MOBILE_FACET_QUERY);
@@ -162,8 +318,29 @@
 
     mediaQuery.addEventListener("change", handleMediaChange);
 
+    const nextWorkspaceId = resolveWorkspaceId();
+    workspaceId = nextWorkspaceId;
+    ensureManualSession(nextWorkspaceId);
+
     return () => {
       mediaQuery.removeEventListener("change", handleMediaChange);
+      if (draftSyncTimeoutId) {
+        clearTimeout(draftSyncTimeoutId);
+      }
+    };
+  });
+
+  $effect(() => {
+    const sessionDraft = manualSessionQuery.data?.draft;
+    if (!sessionDraft) {
+      return;
+    }
+    if (draftSyncTimeoutId || Object.keys(pendingDraftPatch).length > 0) {
+      return;
+    }
+
+    markings = {
+      ...sessionDraft,
     };
   });
 
@@ -473,6 +650,51 @@
     return recommendLabels(activeProfile);
   });
 
+  const manualSessionState = $derived.by(() => {
+    return manualSessionQuery.data ?? null;
+  });
+
+  const pendingFollowUpQuestions = $derived.by(() => {
+    if (!manualSessionState) {
+      return [];
+    }
+    return manualSessionState.followUpQuestions.filter((question) => {
+      return question.status === "pending";
+    });
+  });
+
+  const manualStatusTag = $derived.by(() => {
+    if (!manualSessionState) {
+      return null;
+    }
+
+    const confidencePercent = Math.round(manualSessionState.confidence * 100);
+    if (manualSessionState.status === "inference_running") {
+      return "Inferring...";
+    }
+    if (manualSessionState.status === "failed") {
+      return "Needs retry";
+    }
+    if (manualSessionState.status === "needs_followup") {
+      return `${confidencePercent}% · follow-up`;
+    }
+    if (manualSessionState.status === "ready") {
+      return `${confidencePercent}% · ready`;
+    }
+    return `${confidencePercent}%`;
+  });
+
+  const isManualBusy = $derived.by(() => {
+    return (
+      isSubmittingManualPrompt ||
+      manualSessionState?.status === "inference_running"
+    );
+  });
+
+  const hasManualPendingQuestions = $derived.by(() => {
+    return pendingFollowUpQuestions.length > 0;
+  });
+
   const setSelectedVariantId = (variantId: string): void => {
     selectedVariantId = variantId;
   };
@@ -507,6 +729,165 @@
       ...markings,
       ...patch,
     };
+    pendingDraftPatch = {
+      ...pendingDraftPatch,
+      ...patch,
+    };
+    scheduleDraftSync();
+  };
+
+  const resetManualSession = async (): Promise<void> => {
+    if (!workspaceId) {
+      return;
+    }
+
+    manualUiError = "";
+    try {
+      if (draftSyncTimeoutId) {
+        clearTimeout(draftSyncTimeoutId);
+        draftSyncTimeoutId = null;
+      }
+      pendingDraftPatch = {};
+      await runWithTransientConvexRetry(async () => {
+        await convex.mutation(api.manualInference.resetSession, {
+          workspaceId,
+        });
+      });
+      manualPrompt = "";
+    } catch (error) {
+      manualUiError = `Failed to reset manual session: ${toUiError(error)}`;
+    }
+  };
+
+  const recoverManualSubmitFromConnectionDrop = async (): Promise<boolean> => {
+    if (!workspaceId) {
+      return false;
+    }
+
+    const deadline = Date.now() + MANUAL_SUBMIT_RECOVERY_TIMEOUT_MS;
+    while (Date.now() < deadline) {
+      const session = await convex.query(api.manualInference.getSession, {
+        workspaceId,
+      });
+      if (!session) {
+        await waitMs(MANUAL_SUBMIT_RECOVERY_POLL_MS);
+        continue;
+      }
+      if (
+        session.status === "inference_running" ||
+        session.status === "needs_followup" ||
+        session.status === "ready"
+      ) {
+        return true;
+      }
+      if (session.status === "failed") {
+        return false;
+      }
+      await waitMs(MANUAL_SUBMIT_RECOVERY_POLL_MS);
+    }
+
+    return false;
+  };
+
+  const runManualSubmitAction = async (prompt: string): Promise<void> => {
+    await withConvexRequestTimeout(
+      convex.action(api.manualInference.submitPrompt, {
+        workspaceId,
+        prompt,
+      })
+    );
+  };
+
+  const retryManualSubmitAfterTransientError = async (
+    prompt: string
+  ): Promise<void> => {
+    const recovered = await recoverManualSubmitFromConnectionDrop();
+    if (recovered) {
+      return;
+    }
+
+    await waitMs(TRANSIENT_CONVEX_RETRY_DELAY_MS);
+    try {
+      await runManualSubmitAction(prompt);
+    } catch (error) {
+      if (isTransientConvexTransportError(error)) {
+        const recoveredAfterRetry =
+          await recoverManualSubmitFromConnectionDrop();
+        if (recoveredAfterRetry) {
+          return;
+        }
+      }
+      throw error;
+    }
+  };
+
+  const submitManualPrompt = async (): Promise<void> => {
+    const prompt = manualPrompt.trim();
+    if (!workspaceId) {
+      manualUiError = "Manual workspace is not ready yet.";
+      return;
+    }
+    if (!prompt) {
+      manualUiError = "Enter a cable description before inferring fields.";
+      return;
+    }
+
+    manualUiError = "";
+    isSubmittingManualPrompt = true;
+
+    try {
+      const didFlushDraftPatch = await flushDraftPatch();
+      if (!didFlushDraftPatch) {
+        return;
+      }
+      await runManualSubmitAction(prompt);
+    } catch (error) {
+      if (isTransientConvexTransportError(error)) {
+        try {
+          await retryManualSubmitAfterTransientError(prompt);
+          return;
+        } catch (retryError) {
+          manualUiError = `Manual inference failed: ${toUiError(retryError)}`;
+          return;
+        }
+      }
+
+      manualUiError = `Manual inference failed: ${toUiError(error)}`;
+    } finally {
+      isSubmittingManualPrompt = false;
+    }
+  };
+
+  const isQuestionBusy = (questionId: string): boolean => {
+    return pendingQuestionIds.includes(questionId);
+  };
+
+  const answerQuestion = async (
+    questionId: string,
+    answer: "yes" | "no" | "skip"
+  ): Promise<void> => {
+    if (!workspaceId) {
+      return;
+    }
+    if (isQuestionBusy(questionId)) {
+      return;
+    }
+
+    manualUiError = "";
+    pendingQuestionIds = [...pendingQuestionIds, questionId];
+    try {
+      await runWithTransientConvexRetry(async () => {
+        await convex.mutation(api.manualInference.answerQuestion, {
+          workspaceId,
+          questionId,
+          answer,
+        });
+      });
+    } catch (error) {
+      manualUiError = `Failed to save follow-up answer: ${toUiError(error)}`;
+    } finally {
+      pendingQuestionIds = pendingQuestionIds.filter((id) => id !== questionId);
+    }
   };
 </script>
 
@@ -623,6 +1004,100 @@
     </div>
   {:else}
     <div class="workspace-grid">
+      <section class="panel panel-soft fade-in delay-2">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <h2 class="panel-title">Describe First</h2>
+          {#if manualStatusTag}
+            <span class="tag">{manualStatusTag}</span>
+          {/if}
+        </div>
+
+        <p class="panel-subtitle">
+          Describe what is printed on the cable. We will pre-fill manual fields
+          and ask up to three focused follow-up questions only when needed.
+        </p>
+
+        <label class="field mt-4">
+          <span class="sr-only">Cable description</span>
+          <textarea
+            class="field-textarea"
+            rows="3"
+            placeholder='Try: "usb-c to c, 240w, braided, 8k 60hz"'
+            bind:value={manualPrompt}
+          ></textarea>
+        </label>
+
+        <div class="manual-assist-actions">
+          <button
+            type="button"
+            class="inline-action inline-action-primary"
+            onclick={submitManualPrompt}
+            disabled={isManualBusy}
+          >
+            {isManualBusy ? "Inferring..." : "Infer Fields"}
+          </button>
+          <button
+            type="button"
+            class="inline-action"
+            onclick={resetManualSession}
+            disabled={isManualBusy}
+          >
+            Reset
+          </button>
+        </div>
+
+        {#if manualSessionState?.notes}
+          <p class="note mt-3">{manualSessionState.notes}</p>
+        {/if}
+
+        {#if manualUiError || manualSessionState?.lastError}
+          <p class="manual-error">
+            {manualUiError || manualSessionState?.lastError}
+          </p>
+        {/if}
+
+        {#if hasManualPendingQuestions}
+          <div class="manual-followup-stack">
+            <p class="field-label">Follow-up questions</p>
+            {#each pendingFollowUpQuestions as question (question.id)}
+              <article class="manual-followup-card">
+                <p class="manual-followup-prompt">{question.prompt}</p>
+                {#if question.detail}
+                  <p class="manual-followup-detail">{question.detail}</p>
+                {/if}
+
+                <div class="manual-followup-actions">
+                  <button
+                    type="button"
+                    class="inline-action inline-action-primary"
+                    onclick={() => answerQuestion(question.id, "yes")}
+                    disabled={isQuestionBusy(question.id)}
+                  >
+                    Yes
+                  </button>
+                  <button
+                    type="button"
+                    class="inline-action"
+                    onclick={() => answerQuestion(question.id, "no")}
+                    disabled={isQuestionBusy(question.id)}
+                  >
+                    No
+                  </button>
+                  <button
+                    type="button"
+                    class="inline-action"
+                    onclick={() => answerQuestion(question.id, "skip")}
+                    disabled={isQuestionBusy(question.id)}
+                  >
+                    Skip
+                  </button>
+                </div>
+              </article>
+            {/each}
+          </div>
+        {/if}
+      </section>
+
       <section class="panel fade-in delay-2">
         <div class="flex flex-wrap items-center justify-between gap-3">
           <h2 class="panel-title">Manual Entry</h2>

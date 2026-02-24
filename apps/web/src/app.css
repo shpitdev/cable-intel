@@ -328,7 +328,8 @@ a {
 }
 
 .field-input,
-.field-select {
+.field-select,
+.field-textarea {
   width: 100%;
   padding: 0.64rem 0.75rem;
   font-size: 0.9rem;
@@ -345,9 +346,16 @@ a {
 }
 
 .field-input:focus,
-.field-select:focus {
+.field-select:focus,
+.field-textarea:focus {
   border-color: rgb(15 118 110 / 0.56);
   box-shadow: 0 0 0 2px rgb(15 118 110 / 0.2);
+}
+
+.field-textarea {
+  min-height: 5.4rem;
+  line-height: 1.4;
+  resize: vertical;
 }
 
 .checkbox-tile {
@@ -644,6 +652,70 @@ a {
 .inline-action:hover {
   color: var(--ink-strong);
   border-color: rgb(15 118 110 / 0.4);
+}
+
+.inline-action-primary {
+  color: #f8fafc;
+  background: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 72%, black);
+}
+
+.inline-action-primary:hover {
+  color: #fff;
+  background: var(--accent-strong);
+  border-color: color-mix(in srgb, var(--accent-strong) 76%, black);
+}
+
+.inline-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+.manual-assist-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.72rem;
+}
+
+.manual-error {
+  margin-top: 0.6rem;
+  font-size: 0.82rem;
+  line-height: 1.4;
+  color: #9f1239;
+}
+
+.manual-followup-stack {
+  display: grid;
+  gap: 0.58rem;
+  margin-top: 0.85rem;
+}
+
+.manual-followup-card {
+  padding: 0.65rem 0.74rem;
+  background: rgb(255 255 255 / 0.78);
+  border: 1px solid var(--line);
+  border-radius: 0.84rem;
+}
+
+.manual-followup-prompt {
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--ink-strong);
+}
+
+.manual-followup-detail {
+  margin-top: 0.24rem;
+  font-size: 0.76rem;
+  line-height: 1.35;
+  color: var(--ink-muted);
+}
+
+.manual-followup-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.42rem;
+  margin-top: 0.48rem;
 }
 
 .variant-count {
