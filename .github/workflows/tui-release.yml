@@ -78,7 +78,6 @@ jobs:
     runs-on: ubuntu-latest
     env:
       PUBLIC_CONVEX_URL: "https://example.convex.cloud"
-      USE_BROWSERBASE: "1"
       BROWSERBASE_API_KEY: ${{ secrets.BROWSERBASE_API_KEY }}
       BROWSERBASE_PROJECT_ID: ${{ secrets.BROWSERBASE_PROJECT_ID }}
     steps:
@@ -109,22 +108,19 @@ jobs:
             bun install --frozen-lockfile
           )
 
-      - name: Require Browserbase credentials
-        run: |
-          if [ -z "${BROWSERBASE_API_KEY:-}" ]; then
-            echo "Missing BROWSERBASE_API_KEY secret"
-            exit 1
-          fi
-          if [ -z "${BROWSERBASE_PROJECT_ID:-}" ]; then
-            echo "Missing BROWSERBASE_PROJECT_ID secret"
-            exit 1
-          fi
-
       - name: Install agent-browser CLI
         run: npm install -g agent-browser@latest
 
       - name: Run browser QA smoke
-        run: bash ./scripts/browser/run-local-browser-qa.sh --out-dir artifacts/browser-qa-release
+        run: |
+          if [ -n "${BROWSERBASE_API_KEY:-}" ] && [ -n "${BROWSERBASE_PROJECT_ID:-}" ]; then
+            export USE_BROWSERBASE=1
+            echo "Browserbase credentials detected; replay URLs will be captured."
+          else
+            export USE_BROWSERBASE=0
+            echo "Browserbase credentials missing; running local browser provider."
+          fi
+          bash ./scripts/browser/run-local-browser-qa.sh --out-dir artifacts/browser-qa-release
 
       - name: Upload browser QA artifact
         uses: actions/upload-artifact@v4
