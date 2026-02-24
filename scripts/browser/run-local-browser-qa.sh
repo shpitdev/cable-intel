@@ -93,12 +93,15 @@ SMOKE_ARGS=(
   --base-url "$BASE_URL"
   --out-dir "$OUT_DIR"
 )
-if [[ "${USE_BROWSERBASE:-0}" == "1" ]]; then
+SMOKE_USE_BROWSERBASE="${USE_BROWSERBASE:-0}"
+if [[ "$SMOKE_USE_BROWSERBASE" == "1" ]]; then
   if is_local_base_url "$BASE_URL"; then
     echo "USE_BROWSERBASE=1 ignored for local URL (${BASE_URL}); using local provider."
+    SMOKE_USE_BROWSERBASE="0"
   else
     SMOKE_ARGS+=(--use-browserbase)
   fi
 fi
 
-bash ./scripts/browser/agent-browser-smoke.sh "${SMOKE_ARGS[@]}"
+USE_BROWSERBASE="$SMOKE_USE_BROWSERBASE" \
+  bash ./scripts/browser/agent-browser-smoke.sh "${SMOKE_ARGS[@]}"
