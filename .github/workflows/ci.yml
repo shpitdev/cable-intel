@@ -294,7 +294,7 @@ jobs:
       - stage-1-quality
       - stage-2-browser-qa
       - stage-3-integration-build
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - name: Finalize staged CI result
         run: |
