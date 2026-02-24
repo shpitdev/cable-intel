@@ -25,7 +25,7 @@ concurrency:
 jobs:
   stage-1-quality:
     name: Stage 1 - Quality
-    runs-on: ${{ vars.CI_RUNNER != '' && vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     env:
       PUBLIC_CONVEX_URL: "https://example.convex.cloud"
     steps:
@@ -78,7 +78,7 @@ jobs:
   stage-2-browser-qa:
     name: Stage 2 - Browser QA
     needs: stage-1-quality
-    runs-on: ${{ vars.CI_RUNNER != '' && vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     permissions:
       contents: read
       pull-requests: write
@@ -225,7 +225,7 @@ jobs:
   stage-3-integration-build:
     name: Stage 3 - Integration + Build
     needs: stage-2-browser-qa
-    runs-on: ${{ vars.CI_LARGE_RUNNER != '' && vars.CI_LARGE_RUNNER || (vars.CI_RUNNER != '' && vars.CI_RUNNER || 'ubuntu-latest') }}
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     env:
       PUBLIC_CONVEX_URL: "https://example.convex.cloud"
     steps:
