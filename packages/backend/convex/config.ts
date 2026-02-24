@@ -1,4 +1,5 @@
 const DEFAULT_INGEST_MODEL = "openai/gpt-oss-120b";
+const DEFAULT_MANUAL_INFERENCE_MODEL = "openai/gpt-oss-120b";
 const DEFAULT_MAX_PARSE_RETRIES = 3;
 const DEFAULT_INITIAL_RETRY_DELAY_MS = 1000;
 const DEFAULT_MAX_RETRY_DELAY_MS = 30_000;
@@ -11,6 +12,7 @@ type BooleanEnvKey =
   | "AI_SDK_TELEMETRY_ENABLED"
   | "AI_SDK_TELEMETRY_RECORD_INPUTS"
   | "AI_SDK_TELEMETRY_RECORD_OUTPUTS";
+type StringEnvKey = "MANUAL_INFERENCE_MODEL";
 
 const readRequiredEnv = (key: RequiredEnvKey): string => {
   const value = process.env[key];
@@ -46,11 +48,28 @@ const readBooleanEnv = (key: BooleanEnvKey, fallback: boolean): boolean => {
   );
 };
 
+const readStringEnv = (key: StringEnvKey, fallback: string): string => {
+  const value = process.env[key];
+  if (!value) {
+    return fallback;
+  }
+
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : fallback;
+};
+
 export const ingestDefaults = {
   model: DEFAULT_INGEST_MODEL,
   maxParseRetries: DEFAULT_MAX_PARSE_RETRIES,
   initialRetryDelayMs: DEFAULT_INITIAL_RETRY_DELAY_MS,
   maxRetryDelayMs: DEFAULT_MAX_RETRY_DELAY_MS,
+  aiTelemetryEnabled: DEFAULT_AI_SDK_TELEMETRY_ENABLED,
+  aiTelemetryRecordInputs: DEFAULT_AI_SDK_TELEMETRY_RECORD_INPUTS,
+  aiTelemetryRecordOutputs: DEFAULT_AI_SDK_TELEMETRY_RECORD_OUTPUTS,
+} as const;
+
+export const manualInferenceDefaults = {
+  model: DEFAULT_MANUAL_INFERENCE_MODEL,
   aiTelemetryEnabled: DEFAULT_AI_SDK_TELEMETRY_ENABLED,
   aiTelemetryRecordInputs: DEFAULT_AI_SDK_TELEMETRY_RECORD_INPUTS,
   aiTelemetryRecordOutputs: DEFAULT_AI_SDK_TELEMETRY_RECORD_OUTPUTS,
@@ -65,6 +84,14 @@ export interface IngestConfig {
   initialRetryDelayMs: number;
   maxParseRetries: number;
   maxRetryDelayMs: number;
+  model: string;
+}
+
+export interface ManualInferenceConfig {
+  aiGatewayApiKey: string;
+  aiTelemetryEnabled: boolean;
+  aiTelemetryRecordInputs: boolean;
+  aiTelemetryRecordOutputs: boolean;
   model: string;
 }
 
@@ -88,5 +115,27 @@ export const getIngestConfig = (): IngestConfig => {
     maxParseRetries: ingestDefaults.maxParseRetries,
     initialRetryDelayMs: ingestDefaults.initialRetryDelayMs,
     maxRetryDelayMs: ingestDefaults.maxRetryDelayMs,
+  };
+};
+
+export const getManualInferenceConfig = (): ManualInferenceConfig => {
+  return {
+    aiGatewayApiKey: readRequiredEnv("AI_GATEWAY_API_KEY"),
+    aiTelemetryEnabled: readBooleanEnv(
+      "AI_SDK_TELEMETRY_ENABLED",
+      manualInferenceDefaults.aiTelemetryEnabled
+    ),
+    aiTelemetryRecordInputs: readBooleanEnv(
+      "AI_SDK_TELEMETRY_RECORD_INPUTS",
+      manualInferenceDefaults.aiTelemetryRecordInputs
+    ),
+    aiTelemetryRecordOutputs: readBooleanEnv(
+      "AI_SDK_TELEMETRY_RECORD_OUTPUTS",
+      manualInferenceDefaults.aiTelemetryRecordOutputs
+    ),
+    model: readStringEnv(
+      "MANUAL_INFERENCE_MODEL",
+      manualInferenceDefaults.model
+    ),
   };
 };

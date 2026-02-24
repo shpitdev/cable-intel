@@ -15,6 +15,8 @@ import type * as healthcheck from "../healthcheck.js";
 import type * as ingest from "../ingest.js";
 import type * as ingestDb from "../ingestDb.js";
 import type * as ingestQueries from "../ingestQueries.js";
+import type * as manualInference from "../manualInference.js";
+import type * as manualInferenceLogic from "../manualInferenceLogic.js";
 import type * as shopifyJsonEnrichment from "../shopifyJsonEnrichment.js";
 
 import type {
@@ -31,6 +33,8 @@ declare const fullApi: ApiFromModules<{
   ingest: typeof ingest;
   ingestDb: typeof ingestDb;
   ingestQueries: typeof ingestQueries;
+  manualInference: typeof manualInference;
+  manualInferenceLogic: typeof manualInferenceLogic;
   shopifyJsonEnrichment: typeof shopifyJsonEnrichment;
 }>;
 

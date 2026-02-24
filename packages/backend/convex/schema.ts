@@ -1,5 +1,13 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import {
+  CONFIDENCE_BAND_VALUES,
+  CONNECTOR_VALUES,
+  FOLLOW_UP_ANSWER_VALUES,
+  FOLLOW_UP_CATEGORY_VALUES,
+  MANUAL_INFERENCE_STATUS_VALUES,
+  VIDEO_SUPPORT_VALUES,
+} from "./manualInferenceLogic";
 
 const workflowStatusValidator = v.union(
   v.literal("running"),
@@ -31,6 +39,66 @@ const visibilityValidator = v.union(
   v.literal("shared"),
   v.literal("public")
 );
+
+const connectorValidator = v.union(
+  ...CONNECTOR_VALUES.map((connector) => v.literal(connector))
+);
+
+const videoSupportValidator = v.union(
+  ...VIDEO_SUPPORT_VALUES.map((value) => v.literal(value))
+);
+
+const manualInferenceStatusValidator = v.union(
+  ...MANUAL_INFERENCE_STATUS_VALUES.map((value) => v.literal(value))
+);
+
+const manualInferenceConfidenceBandValidator = v.union(
+  ...CONFIDENCE_BAND_VALUES.map((value) => v.literal(value))
+);
+
+const followUpCategoryValidator = v.union(
+  ...FOLLOW_UP_CATEGORY_VALUES.map((value) => v.literal(value))
+);
+
+const followUpAnswerValidator = v.union(
+  ...FOLLOW_UP_ANSWER_VALUES.map((value) => v.literal(value))
+);
+
+const manualDraftValidator = v.object({
+  connectorFrom: connectorValidator,
+  connectorTo: connectorValidator,
+  dataOnly: v.boolean(),
+  gbps: v.string(),
+  maxRefreshHz: v.string(),
+  maxResolution: v.string(),
+  usbGeneration: v.string(),
+  videoSupport: videoSupportValidator,
+  watts: v.string(),
+});
+
+const manualDraftPatchValidator = v.object({
+  connectorFrom: v.optional(connectorValidator),
+  connectorTo: v.optional(connectorValidator),
+  dataOnly: v.optional(v.boolean()),
+  gbps: v.optional(v.string()),
+  maxRefreshHz: v.optional(v.string()),
+  maxResolution: v.optional(v.string()),
+  usbGeneration: v.optional(v.string()),
+  videoSupport: v.optional(videoSupportValidator),
+  watts: v.optional(v.string()),
+});
+
+const followUpQuestionValidator = v.object({
+  id: v.string(),
+  category: followUpCategoryValidator,
+  prompt: v.string(),
+  detail: v.optional(v.string()),
+  status: v.union(v.literal("pending"), v.literal("answered")),
+  answer: v.optional(followUpAnswerValidator),
+  applyIfYes: manualDraftPatchValidator,
+  applyIfNo: manualDraftPatchValidator,
+  applyIfSkip: manualDraftPatchValidator,
+});
 
 const powerCapabilityValidator = v.object({
   maxWatts: v.optional(v.number()),
@@ -164,4 +232,24 @@ export default defineSchema({
   })
     .index("by_user", ["userId"])
     .index("by_user_variant", ["userId", "variantId"]),
+
+  manualInferenceSessions: defineTable({
+    workspaceId: v.string(),
+    draft: manualDraftValidator,
+    prompt: v.optional(v.string()),
+    status: manualInferenceStatusValidator,
+    confidence: v.number(),
+    confidenceBand: manualInferenceConfidenceBandValidator,
+    notes: v.optional(v.string()),
+    followUpQuestions: v.array(followUpQuestionValidator),
+    answeredQuestionCount: v.number(),
+    llmUsed: v.boolean(),
+    lastError: v.optional(v.string()),
+    lastInferenceAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_workspace", ["workspaceId"])
+    .index("by_status", ["status"])
+    .index("by_updated_at", ["updatedAt"]),
 });

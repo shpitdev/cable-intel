@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import { getIngestConfig, ingestDefaults } from "./config";
+import {
+  getIngestConfig,
+  getManualInferenceConfig,
+  ingestDefaults,
+  manualInferenceDefaults,
+} from "./config";
 
 const ORIGINAL_AI_GATEWAY_API_KEY = process.env.AI_GATEWAY_API_KEY;
 const ORIGINAL_FIRECRAWL_API_KEY = process.env.FIRECRAWL_API_KEY;
@@ -8,6 +13,7 @@ const ORIGINAL_AI_SDK_TELEMETRY_RECORD_INPUTS =
   process.env.AI_SDK_TELEMETRY_RECORD_INPUTS;
 const ORIGINAL_AI_SDK_TELEMETRY_RECORD_OUTPUTS =
   process.env.AI_SDK_TELEMETRY_RECORD_OUTPUTS;
+const ORIGINAL_MANUAL_INFERENCE_MODEL = process.env.MANUAL_INFERENCE_MODEL;
 
 afterEach(() => {
   if (ORIGINAL_AI_GATEWAY_API_KEY === undefined) {
@@ -40,6 +46,12 @@ afterEach(() => {
   } else {
     process.env.AI_SDK_TELEMETRY_RECORD_OUTPUTS =
       ORIGINAL_AI_SDK_TELEMETRY_RECORD_OUTPUTS;
+  }
+
+  if (ORIGINAL_MANUAL_INFERENCE_MODEL === undefined) {
+    process.env.MANUAL_INFERENCE_MODEL = undefined;
+  } else {
+    process.env.MANUAL_INFERENCE_MODEL = ORIGINAL_MANUAL_INFERENCE_MODEL;
   }
 });
 
@@ -95,5 +107,41 @@ describe("getIngestConfig", () => {
     expect(() => getIngestConfig()).toThrow(
       "Invalid boolean environment variable: AI_SDK_TELEMETRY_ENABLED=maybe"
     );
+  });
+});
+
+describe("getManualInferenceConfig", () => {
+  it("requires AI gateway key", () => {
+    process.env.AI_GATEWAY_API_KEY = undefined;
+    process.env.MANUAL_INFERENCE_MODEL = undefined;
+
+    expect(() => getManualInferenceConfig()).toThrow(
+      "Missing required environment variable: AI_GATEWAY_API_KEY"
+    );
+  });
+
+  it("returns manual defaults when optional values are absent", () => {
+    process.env.AI_GATEWAY_API_KEY = "manual-ai-key";
+    process.env.MANUAL_INFERENCE_MODEL = undefined;
+    process.env.AI_SDK_TELEMETRY_ENABLED = undefined;
+    process.env.AI_SDK_TELEMETRY_RECORD_INPUTS = undefined;
+    process.env.AI_SDK_TELEMETRY_RECORD_OUTPUTS = undefined;
+
+    expect(getManualInferenceConfig()).toEqual({
+      aiGatewayApiKey: "manual-ai-key",
+      aiTelemetryEnabled: manualInferenceDefaults.aiTelemetryEnabled,
+      aiTelemetryRecordInputs: manualInferenceDefaults.aiTelemetryRecordInputs,
+      aiTelemetryRecordOutputs:
+        manualInferenceDefaults.aiTelemetryRecordOutputs,
+      model: manualInferenceDefaults.model,
+    });
+  });
+
+  it("accepts MANUAL_INFERENCE_MODEL override", () => {
+    const overrideModel = "openai/gpt-oss-120b-test-override";
+    process.env.AI_GATEWAY_API_KEY = "manual-ai-key";
+    process.env.MANUAL_INFERENCE_MODEL = overrideModel;
+
+    expect(getManualInferenceConfig().model).toBe(overrideModel);
   });
 });
