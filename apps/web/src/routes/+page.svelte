@@ -29,8 +29,13 @@
   const CONVEX_REQUEST_TIMEOUT_MESSAGE =
     "Convex request timed out before acknowledgement.";
   const TRANSIENT_CONVEX_RETRY_DELAY_MS = 700;
+  const MANUAL_SESSION_BOOTSTRAP_RETRY_MS = 2500;
   const MANUAL_SUBMIT_RECOVERY_POLL_MS = 250;
   const MANUAL_SUBMIT_RECOVERY_TIMEOUT_MS = 6000;
+  const MANUAL_SESSION_INIT_ERROR_PREFIX =
+    "Failed to initialize manual session:";
+  const CONVEX_RECONNECTING_NOTE =
+    "Connection to workspace data is reconnecting. Results will appear once reconnected.";
   const WORKSPACE_STORAGE_KEY = "cable-intel-workspace-id";
   const MOBILE_FACET_QUERY = "(max-width: 1179px)";
   const FACET_DIMENSIONS = [
@@ -138,7 +143,37 @@
     value: string;
   }
 
+  interface ConvexConnectionSnapshot {
+    connectionCount: number;
+    connectionRetries: number;
+    hasEverConnected: boolean;
+    hasInflightRequests: boolean;
+    inflightActions: number;
+    inflightMutations: number;
+    isWebSocketConnected: boolean;
+    timeOfOldestInflightRequest: Date | null;
+  }
+
+  const DISCONNECTED_CONNECTION_SNAPSHOT: ConvexConnectionSnapshot = {
+    connectionCount: 0,
+    connectionRetries: 0,
+    hasEverConnected: false,
+    hasInflightRequests: false,
+    inflightActions: 0,
+    inflightMutations: 0,
+    isWebSocketConnected: false,
+    timeOfOldestInflightRequest: null,
+  };
+
   const convex = useConvexClient();
+
+  const readConvexConnectionState = (): ConvexConnectionSnapshot => {
+    try {
+      return convex.connectionState();
+    } catch {
+      return DISCONNECTED_CONNECTION_SNAPSHOT;
+    }
+  };
 
   let debouncedCatalogSearch = $state("");
   const topCablesQuery = useQuery(api.ingestQueries.getTopCables, () => ({
@@ -162,6 +197,11 @@
   let pendingQuestionIds = $state<string[]>([]);
   let pendingDraftPatch = $state<Partial<MarkingsDraft>>({});
   let draftSyncTimeoutId = $state<ReturnType<typeof setTimeout> | null>(null);
+  let convexConnectionState = $state<ConvexConnectionSnapshot>(
+    readConvexConnectionState()
+  );
+  let isEnsuringManualSession = $state(false);
+  let nextManualSessionEnsureAt = $state(0);
 
   $effect(() => {
     const nextSearch = $catalogSearchStore.trim();
@@ -252,14 +292,30 @@
   const ensureManualSession = async (
     nextWorkspaceId: string
   ): Promise<void> => {
+    if (isEnsuringManualSession) {
+      return;
+    }
+
+    isEnsuringManualSession = true;
     try {
       await runWithTransientConvexRetry(async () => {
         await convex.mutation(api.manualInference.ensureSession, {
           workspaceId: nextWorkspaceId,
         });
       });
+      nextManualSessionEnsureAt = 0;
+      if (manualUiError.startsWith(MANUAL_SESSION_INIT_ERROR_PREFIX)) {
+        manualUiError = "";
+      }
     } catch (error) {
-      manualUiError = `Failed to initialize manual session: ${toUiError(error)}`;
+      if (isTransientConvexTransportError(error)) {
+        nextManualSessionEnsureAt =
+          Date.now() + MANUAL_SESSION_BOOTSTRAP_RETRY_MS;
+      } else {
+        manualUiError = `${MANUAL_SESSION_INIT_ERROR_PREFIX} ${toUiError(error)}`;
+      }
+    } finally {
+      isEnsuringManualSession = false;
     }
   };
 
@@ -318,15 +374,48 @@
 
     mediaQuery.addEventListener("change", handleMediaChange);
 
+    let unsubscribeConnectionState: (() => void) | null = null;
+    try {
+      convexConnectionState = readConvexConnectionState();
+      unsubscribeConnectionState = convex.subscribeToConnectionState(
+        (nextState) => {
+          convexConnectionState = nextState;
+        }
+      );
+    } catch {
+      convexConnectionState = DISCONNECTED_CONNECTION_SNAPSHOT;
+    }
+
     const nextWorkspaceId = resolveWorkspaceId();
     workspaceId = nextWorkspaceId;
-    ensureManualSession(nextWorkspaceId);
 
     return () => {
       mediaQuery.removeEventListener("change", handleMediaChange);
+      unsubscribeConnectionState?.();
       if (draftSyncTimeoutId) {
         clearTimeout(draftSyncTimeoutId);
       }
+    };
+  });
+
+  $effect(() => {
+    if (!workspaceId || manualSessionQuery.data) {
+      return;
+    }
+    if (
+      !convexConnectionState.isWebSocketConnected ||
+      isEnsuringManualSession
+    ) {
+      return;
+    }
+
+    const delayMs = Math.max(0, nextManualSessionEnsureAt - Date.now());
+    const timeoutId = setTimeout(() => {
+      ensureManualSession(workspaceId);
+    }, delayMs);
+
+    return () => {
+      clearTimeout(timeoutId);
     };
   });
 
@@ -684,6 +773,21 @@
     return `${confidencePercent}%`;
   });
 
+  const isConvexConnected = $derived.by(() => {
+    return convexConnectionState.isWebSocketConnected;
+  });
+
+  const manualErrorMessage = $derived.by(() => {
+    const message = manualUiError || manualSessionState?.lastError || "";
+    if (
+      message.startsWith(MANUAL_SESSION_INIT_ERROR_PREFIX) &&
+      !isConvexConnected
+    ) {
+      return "";
+    }
+    return message;
+  });
+
   const isManualBusy = $derived.by(() => {
     return (
       isSubmittingManualPrompt ||
@@ -825,6 +929,9 @@
     const prompt = manualPrompt.trim();
     if (!workspaceId) {
       manualUiError = "Manual workspace is not ready yet.";
+      return;
+    }
+    if (!isConvexConnected) {
       return;
     }
     if (!prompt) {
@@ -986,11 +1093,13 @@
           />
         </div>
 
-        {#if topCablesQuery.isLoading}
+        {#if !isConvexConnected}
+          <p class="note mt-3">{CONVEX_RECONNECTING_NOTE}</p>
+        {:else if topCablesQuery.isLoading}
           <p class="note mt-3">Loading catalog rows...</p>
         {/if}
 
-        {#if !topCablesQuery.data || topCablesQuery.data.length === 0}
+        {#if isConvexConnected && (!topCablesQuery.data || topCablesQuery.data.length === 0)}
           <p class="note mt-3">
             Catalog is currently empty. Use manual entry mode for now.
           </p>
@@ -1050,10 +1159,12 @@
           <p class="note mt-3">{manualSessionState.notes}</p>
         {/if}
 
-        {#if manualUiError || manualSessionState?.lastError}
-          <p class="manual-error">
-            {manualUiError || manualSessionState?.lastError}
-          </p>
+        {#if !isConvexConnected}
+          <p class="note mt-3">{CONVEX_RECONNECTING_NOTE}</p>
+        {/if}
+
+        {#if manualErrorMessage}
+          <p class="manual-error">{manualErrorMessage}</p>
         {/if}
 
         {#if hasManualPendingQuestions}
