@@ -84,7 +84,6 @@ jobs:
       pull-requests: write
     env:
       PUBLIC_CONVEX_URL: "https://example.convex.cloud"
-      USE_BROWSERBASE: "1"
       BROWSERBASE_API_KEY: ${{ secrets.BROWSERBASE_API_KEY }}
       BROWSERBASE_PROJECT_ID: ${{ secrets.BROWSERBASE_PROJECT_ID }}
     steps:
@@ -115,22 +114,18 @@ jobs:
             bun install --frozen-lockfile
           )
 
-      - name: Require Browserbase credentials
-        run: |
-          if [ -z "${BROWSERBASE_API_KEY:-}" ]; then
-            echo "Missing BROWSERBASE_API_KEY secret"
-            exit 1
-          fi
-          if [ -z "${BROWSERBASE_PROJECT_ID:-}" ]; then
-            echo "Missing BROWSERBASE_PROJECT_ID secret"
-            exit 1
-          fi
-
       - name: Install agent-browser CLI
         run: npm install -g agent-browser@latest
 
       - name: Run browser QA smoke
         run: |
+          if [ -n "${BROWSERBASE_API_KEY:-}" ] && [ -n "${BROWSERBASE_PROJECT_ID:-}" ]; then
+            export USE_BROWSERBASE=1
+            echo "Browserbase credentials detected; replay URLs will be captured."
+          else
+            export USE_BROWSERBASE=0
+            echo "Browserbase credentials missing; running local browser provider."
+          fi
           bash ./scripts/browser/run-local-browser-qa.sh --out-dir artifacts/browser-qa
 
       - name: Read replay metadata
@@ -204,10 +199,16 @@ jobs:
         run: |
           echo "## Stage 2 - Browser QA" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "- browser smoke: pass" >> "$GITHUB_STEP_SUMMARY"
-          REPLAY_URL=$(jq -r '.browserbaseReplayUrl // empty' artifacts/browser-qa/results.json)
-          if [ -n "$REPLAY_URL" ]; then
-            echo "- Browserbase replay: $REPLAY_URL" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f artifacts/browser-qa/results.json ]; then
+            echo "- browser smoke: pass" >> "$GITHUB_STEP_SUMMARY"
+            REPLAY_URL=$(jq -r '.browserbaseReplayUrl // empty' artifacts/browser-qa/results.json)
+            if [ -n "$REPLAY_URL" ]; then
+              echo "- Browserbase replay: $REPLAY_URL" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "- Browserbase replay: unavailable (secrets not configured)" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          else
+            echo "- browser smoke: failed before artifact generation" >> "$GITHUB_STEP_SUMMARY"
           fi
 
   stage-3-integration-build:
