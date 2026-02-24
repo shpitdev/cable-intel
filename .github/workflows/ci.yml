@@ -106,7 +106,6 @@ jobs:
             ${{ runner.os }}-bun-turbo-
 
       - name: Cache Playwright browsers
-        if: ${{ env.BROWSERBASE_API_KEY == '' || env.BROWSERBASE_PROJECT_ID == '' }}
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
@@ -127,7 +126,6 @@ jobs:
         run: npm install -g agent-browser@latest
 
       - name: Install Playwright Chromium (local provider)
-        if: ${{ env.BROWSERBASE_API_KEY == '' || env.BROWSERBASE_PROJECT_ID == '' }}
         run: npx playwright install --with-deps chromium
 
       - name: Run browser QA smoke

@@ -26,7 +26,7 @@ jobs:
       DEPLOYMENT_ID: ${{ github.event.deployment.id }}
       DEPLOYMENT_REF: ${{ github.event.deployment.ref }}
       DEPLOYMENT_SHA: ${{ github.event.deployment.sha }}
-      CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+      CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY_PREVIEW }}
     steps:
       - name: Resolve pull request context
         id: pr
@@ -110,7 +110,7 @@ jobs:
         if: steps.pr.outputs.skip != 'true'
         run: |
           if [ -z "${CONVEX_DEPLOY_KEY:-}" ]; then
-            echo "CONVEX_DEPLOY_KEY secret is not configured."
+            echo "CONVEX_DEPLOY_KEY_PREVIEW secret is not configured."
             exit 1
           fi
 
