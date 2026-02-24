@@ -1,0 +1,37 @@
+name: org-required-checks
+
+on:
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - edited
+      - ready_for_review
+
+jobs:
+  Check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check
+        run: echo "Org required check is present."
+
+  ValidatePrTitle:
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+    steps:
+      - name: Validate PR title
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          if [ -z "${PR_TITLE:-}" ]; then
+            echo "PR title is empty."
+            exit 1
+          fi
+
+          if [ ${#PR_TITLE} -gt 120 ]; then
+            echo "PR title must be 120 characters or fewer."
+            exit 1
+          fi
+
+          echo "PR title validation passed."
