@@ -46,6 +46,11 @@ if [[ -z "$BASE_URL" ]]; then
   BASE_URL="http://${HOST}:${PORT}"
 fi
 
+is_local_base_url() {
+  local url="$1"
+  [[ "$url" =~ ^https?://(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])(:|/|$) ]]
+}
+
 PREVIEW_PID=""
 
 cleanup() {
@@ -89,7 +94,11 @@ SMOKE_ARGS=(
   --out-dir "$OUT_DIR"
 )
 if [[ "${USE_BROWSERBASE:-0}" == "1" ]]; then
-  SMOKE_ARGS+=(--use-browserbase)
+  if is_local_base_url "$BASE_URL"; then
+    echo "USE_BROWSERBASE=1 ignored for local URL (${BASE_URL}); using local provider."
+  else
+    SMOKE_ARGS+=(--use-browserbase)
+  fi
 fi
 
 bash ./scripts/browser/agent-browser-smoke.sh "${SMOKE_ARGS[@]}"
