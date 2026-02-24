@@ -23,8 +23,8 @@ jobs:
             asset_name: cable-intel-tui-macos-arm64
             exec_name: cable-intel-tui-macos-arm64
           - os: windows-latest
-            asset_name: cable-intel-tui-windows-x64.exe
-            exec_name: cable-intel-tui-windows-x64.exe
+            asset_name: blacksmith-4vcpu-windows-2025
+            exec_name: blacksmith-4vcpu-windows-2025
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
@@ -75,7 +75,7 @@ jobs:
           if-no-files-found: error
 
   browser-qa:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     env:
       PUBLIC_CONVEX_URL: "https://example.convex.cloud"
       BROWSERBASE_API_KEY: ${{ secrets.BROWSERBASE_API_KEY }}
@@ -145,7 +145,7 @@ jobs:
     needs:
       - build-binaries
       - browser-qa
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - name: Download artifacts
         uses: actions/download-artifact@v4
