@@ -3,16 +3,26 @@
   import { CONNECTOR_OPTIONS } from "$lib/types";
 
   interface Props {
+    inferredFields?: Partial<Record<keyof MarkingsDraft, boolean>>;
     onChange: (patch: Partial<MarkingsDraft>) => void;
     values: MarkingsDraft;
   }
 
-  let { values, onChange }: Props = $props();
+  let { values, onChange, inferredFields = {} }: Props = $props();
+
+  const isFieldInferred = (field: keyof MarkingsDraft): boolean => {
+    return Boolean(inferredFields[field]);
+  };
 </script>
 
 <div class="input-grid">
   <label class="field">
-    <span class="field-label">Connector from</span>
+    <span class="field-label-row">
+      <span class="field-label">Connector from</span>
+      {#if isFieldInferred("connectorFrom")}
+        <span class="field-inferred">Inferred</span>
+      {/if}
+    </span>
     <select
       class="field-select"
       value={values.connectorFrom}
@@ -29,7 +39,12 @@
   </label>
 
   <label class="field">
-    <span class="field-label">Connector to</span>
+    <span class="field-label-row">
+      <span class="field-label">Connector to</span>
+      {#if isFieldInferred("connectorTo")}
+        <span class="field-inferred">Inferred</span>
+      {/if}
+    </span>
     <select
       class="field-select"
       value={values.connectorTo}
@@ -46,7 +61,12 @@
   </label>
 
   <label class="field">
-    <span class="field-label">Printed wattage</span>
+    <span class="field-label-row">
+      <span class="field-label">Printed wattage</span>
+      {#if isFieldInferred("watts")}
+        <span class="field-inferred">Inferred</span>
+      {/if}
+    </span>
     <input
       type="text"
       class="field-input"
@@ -58,7 +78,12 @@
   </label>
 
   <label class="field">
-    <span class="field-label">USB generation marking</span>
+    <span class="field-label-row">
+      <span class="field-label">USB generation marking</span>
+      {#if isFieldInferred("usbGeneration")}
+        <span class="field-inferred">Inferred</span>
+      {/if}
+    </span>
     <input
       type="text"
       class="field-input"
@@ -72,7 +97,12 @@
   </label>
 
   <label class="field">
-    <span class="field-label">Video support marking</span>
+    <span class="field-label-row">
+      <span class="field-label">Video support marking</span>
+      {#if isFieldInferred("videoSupport")}
+        <span class="field-inferred">Inferred</span>
+      {/if}
+    </span>
     <select
       class="field-select"
       value={values.videoSupport}
@@ -95,14 +125,24 @@
       onchange={(event) =>
         onChange({ dataOnly: (event.currentTarget as HTMLInputElement).checked })}
     >
-    <span class="field-label">Treat this as data-only / non-charging</span>
+    <span class="field-label-row">
+      <span class="field-label">Treat this as data-only / non-charging</span>
+      {#if isFieldInferred("dataOnly")}
+        <span class="field-inferred">Inferred</span>
+      {/if}
+    </span>
   </label>
 
   <details class="optional-block md:col-span-2">
     <summary class="optional-summary">Optional advanced signals</summary>
     <div class="optional-content input-grid">
       <label class="field">
-        <span class="field-label">Data throughput (Gbps)</span>
+        <span class="field-label-row">
+          <span class="field-label">Data throughput (Gbps)</span>
+          {#if isFieldInferred("gbps")}
+            <span class="field-inferred">Inferred</span>
+          {/if}
+        </span>
         <input
           type="text"
           class="field-input"
@@ -114,7 +154,12 @@
       </label>
 
       <label class="field">
-        <span class="field-label">Max resolution</span>
+        <span class="field-label-row">
+          <span class="field-label">Max resolution</span>
+          {#if isFieldInferred("maxResolution")}
+            <span class="field-inferred">Inferred</span>
+          {/if}
+        </span>
         <input
           type="text"
           class="field-input"
@@ -128,7 +173,12 @@
       </label>
 
       <label class="field">
-        <span class="field-label">Max refresh rate (Hz)</span>
+        <span class="field-label-row">
+          <span class="field-label">Max refresh rate (Hz)</span>
+          {#if isFieldInferred("maxRefreshHz")}
+            <span class="field-inferred">Inferred</span>
+          {/if}
+        </span>
         <input
           type="text"
           class="field-input"

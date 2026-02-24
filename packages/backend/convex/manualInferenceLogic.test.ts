@@ -49,7 +49,22 @@ describe("manualInferenceLogic", () => {
     expect(merged.draft.watts).toBe("240");
     expect(merged.draft.gbps).toBe("40");
     expect(merged.draft.usbGeneration).toContain("USB4");
-    expect(merged.followUpQuestions.length).toBeLessThanOrEqual(3);
+    expect(merged.followUpQuestions.length).toBeLessThanOrEqual(1);
+  });
+
+  it("avoids follow-up questions when core label signals are already inferred", () => {
+    const deterministic = inferDeterministic(
+      "USB-C to USB-C 240W cable with braided jacket"
+    );
+
+    const merged = mergeInferenceSignals({
+      currentDraft: DEFAULT_MANUAL_DRAFT,
+      deterministic,
+      prompt: "USB-C to USB-C 240W cable with braided jacket",
+    });
+
+    expect(merged.status).toBe("ready");
+    expect(merged.followUpQuestions.length).toBe(0);
   });
 
   it("applies follow-up answer patch to the draft", () => {

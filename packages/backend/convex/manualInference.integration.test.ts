@@ -98,7 +98,7 @@ describe("manualInference", () => {
     expect(result?.draft.usbGeneration.length).toBeGreaterThan(0);
     expect(result?.draft.videoSupport).toBe("yes");
     expect(result?.status).toBe("ready");
-    expect(result?.followUpQuestions.length).toBeLessThanOrEqual(3);
+    expect(result?.followUpQuestions.length).toBeLessThanOrEqual(1);
   });
 
   it("runs a follow-up question loop and applies answer patches", async () => {
@@ -115,6 +115,7 @@ describe("manualInference", () => {
       return question.status === "pending";
     });
     expect((pending?.length ?? 0) > 0).toBe(true);
+    expect((pending?.length ?? 0) <= 1).toBe(true);
 
     const firstQuestion = pending?.[0];
     expect(firstQuestion).toBeDefined();

@@ -16,7 +16,7 @@
   },
   "type": "module",
   "scripts": {
-    "dev": "turbo dev",
+    "dev": "turbo -F web -F @cable-intel/backend dev",
     "build": "turbo build",
     "build:vercel": "bash ./scripts/vercel-build.sh",
     "seed:vercel-deployment": "bun run scripts/seed-vercel-deployment.ts",
