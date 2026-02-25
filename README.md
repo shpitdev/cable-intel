@@ -105,8 +105,7 @@ Web app: `http://localhost:5173`
 
 CI (`.github/workflows/ci.yml`) currently runs:
 - `ultracite check`
-- Convex Shopify ingest integration test
-- Shopify source integration test
+- deterministic manual inference + mapping tests
 - workspace build
 - TUI compile smoke test
 
@@ -121,7 +120,11 @@ Environment notes:
 - `AI_GATEWAY_API_KEY` and `FIRECRAWL_API_KEY` are required only for fallback ingest mode.
 - Shopify-only extraction path works without those fallback provider keys.
 - Optional web analytics: `PUBLIC_VERCEL_ANALYTICS_DSN`.
-- Preview seed automation exists in `.github/workflows/preview-seed.yml`.
+- Preview runtime validation exists in `.github/workflows/preview-seed.yml` (`preview-validation`):
+  - triggered by Vercel `deployment_status` events
+  - resolves the preview deployment URL automatically
+  - seeds Convex preview catalog
+  - runs manual inference runtime validation and Browserbase QA on deployed preview
 
 ## Release Automation
 
