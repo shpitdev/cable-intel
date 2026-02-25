@@ -35,11 +35,41 @@ jobs:
         uses: actions/github-script@v7
         env:
           DEPLOY_REF: ${{ env.DEPLOYMENT_REF }}
+          DEPLOY_SHA: ${{ env.DEPLOYMENT_SHA }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const rawRef = process.env.DEPLOY_REF ?? "";
+            const rawSha = process.env.DEPLOY_SHA ?? "";
             const repo = context.repo;
+            const isCommitSha = (value) => /^[0-9a-f]{40}$/i.test(value);
+
+            const setPrOutputs = (pr, reason) => {
+              core.info(`Resolved PR #${pr.number} (${reason}).`);
+              core.setOutput("skip", "false");
+              core.setOutput("number", String(pr.number));
+              core.setOutput("title", pr.title ?? "");
+              core.setOutput("headSha", pr.head?.sha ?? "");
+            };
+
+            const resolveByCommitSha = async (commitSha) => {
+              if (!commitSha) {
+                return null;
+              }
+              core.info(`Looking up PR associated with commit ${commitSha}.`);
+              const { data: associated } =
+                await github.rest.repos.listPullRequestsAssociatedWithCommit({
+                  ...repo,
+                  commit_sha: commitSha,
+                  per_page: 20,
+                });
+              const openPr = associated.find((pr) => pr.state === "open");
+              if (openPr) {
+                return openPr;
+              }
+              return null;
+            };
+
             const match = rawRef.match(/^refs\/pull\/(\d+)\/merge$/);
             if (match) {
               const pull_number = Number.parseInt(match[1], 10);
@@ -52,11 +82,7 @@ jobs:
                 core.setOutput("skip", "true");
                 return;
               }
-              core.info(`Detected PR #${pull_number} from deployment ref ${rawRef}.`);
-              core.setOutput("skip", "false");
-              core.setOutput("number", String(pr.number));
-              core.setOutput("title", pr.title ?? "");
-              core.setOutput("headSha", pr.head?.sha ?? "");
+              setPrOutputs(pr, `deployment ref ${rawRef}`);
               return;
             }
 
@@ -64,28 +90,32 @@ jobs:
               rawRef.startsWith("refs/heads/") ?
                 rawRef.replace("refs/heads/", "") :
                 rawRef;
-            if (!normalized) {
-              core.warning("Empty deployment ref; skipping preview seed.");
-              core.setOutput("skip", "true");
+            if (normalized && !isCommitSha(normalized)) {
+              const { data: prs } = await github.rest.pulls.list({
+                ...repo,
+                head: `${repo.owner}:${normalized}`,
+                state: "open",
+                per_page: 1,
+              });
+              if (prs.length > 0) {
+                setPrOutputs(prs[0], `branch ${normalized}`);
+                return;
+              }
+              core.info(`No open PR found by branch ${normalized}.`);
+            }
+
+            const commitCandidate =
+              isCommitSha(normalized) ? normalized : (isCommitSha(rawSha) ? rawSha : "");
+            const commitPr = await resolveByCommitSha(commitCandidate);
+            if (commitPr) {
+              setPrOutputs(commitPr, `commit ${commitCandidate}`);
               return;
             }
-            const { data: prs } = await github.rest.pulls.list({
-              ...repo,
-              head: `${repo.owner}:${normalized}`,
-              state: "open",
-              per_page: 1,
-            });
-            if (prs.length === 0) {
-              core.info(`No open PR found for branch ${normalized}; skipping preview seed.`);
-              core.setOutput("skip", "true");
-              return;
-            }
-            const pr = prs[0];
-            core.info(`Preview deployment belongs to PR #${pr.number} (${pr.title}).`);
-            core.setOutput("skip", "false");
-            core.setOutput("number", String(pr.number));
-            core.setOutput("title", pr.title ?? "");
-            core.setOutput("headSha", pr.head?.sha ?? "");
+
+            core.info(
+              `No open PR found for deployment ref '${rawRef}' and sha '${rawSha}'; skipping preview seed.`,
+            );
+            core.setOutput("skip", "true");
 
       - name: Skip when deployment has no matching PR
         if: steps.pr.outputs.skip == 'true'
