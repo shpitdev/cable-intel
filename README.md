@@ -36,9 +36,7 @@ These are open TODO/spike items already tracked in GitHub:
 
 | Candidate | Pain solved | Status |
 |---|---|---|
-| Free-text, conversational manual identification with targeted follow-up questions | Reduces form friction when users only remember partial details | https://github.com/anand-testcompare/cable-intel/issues/3 |
-| Hybrid search + price ingest (facets + lexical + semantic rerank) | Improves "find the right cable" speed for natural-language queries | https://github.com/anand-testcompare/cable-intel/issues/2 |
-| Automatic seeding for new preview/prod deployments | Prevents empty catalogs after deploy and cuts manual ops overhead | https://github.com/anand-testcompare/cable-intel/issues/40 |
+| Hybrid search + price ingest (facets + lexical + semantic rerank) | Improves "find the right cable" speed for natural-language queries | https://github.com/shpitdev/cable-intel/issues/2 |
 
 ## Product Planning (Working Draft)
 
@@ -57,12 +55,11 @@ Current constraint: there is no auth, no multi-user model, and no per-user saved
 | Order | Candidate | Pain solved | Depends on | Value | Complexity | Tracking |
 |---|---|---|---|---|---|---|
 | 1 | Use-case fit advisor (check a cable against repeated workflows) | Reduces uncertainty like "will this reliably handle my laptop + display workflow?" | Need-profile engine + existing capability profile | High | Medium | Idea (no issue yet) |
-| 2 | Hybrid catalog search + price ingest | Faster catalog lookup with natural phrasing and budget awareness | Ingest/schema updates + ranking pipeline | High | Medium-High | https://github.com/anand-testcompare/cable-intel/issues/2 |
-| 3 | Free-text manual identification + targeted follow-up questions | Less manual form entry and better disambiguation | Prompt + confidence loop design | High | Medium | https://github.com/anand-testcompare/cable-intel/issues/3 |
-| 4 | Auth + multi-user workspaces | Enables persistent per-user/team state and collaboration | Identity/session + data ownership model | Very High | High | Idea (no issue yet) |
-| 5 | Custom color systems by user/workspace (strap + holder profiles) | Supports personalized labeling systems and real material choices | Auth/workspaces | Medium-High | Medium | Idea (no issue yet) |
-| 6 | Virtual wall + cable inventory tracking | Replaces spreadsheets for duplicates, location, and usage state | Auth/workspaces + physical inventory model | Very High | High | Idea (no issue yet) |
-| 7 | "Print more" planner and stock alerts | Reduces holder/label stock surprises and planning overhead | Inventory tracking + holder/label metadata | Medium-High | Medium | Idea (no issue yet) |
+| 2 | Hybrid catalog search + price ingest | Faster catalog lookup with natural phrasing and budget awareness | Ingest/schema updates + ranking pipeline | High | Medium-High | https://github.com/shpitdev/cable-intel/issues/2 |
+| 3 | Auth + multi-user workspaces | Enables persistent per-user/team state and collaboration | Identity/session + data ownership model | Very High | High | Idea (no issue yet) |
+| 4 | Custom color systems by user/workspace (strap + holder profiles) | Supports personalized labeling systems and real material choices | Auth/workspaces | Medium-High | Medium | Idea (no issue yet) |
+| 5 | Virtual wall + cable inventory tracking | Replaces spreadsheets for duplicates, location, and usage state | Auth/workspaces + physical inventory model | Very High | High | Idea (no issue yet) |
+| 6 | "Print more" planner and stock alerts | Reduces holder/label stock surprises and planning overhead | Inventory tracking + holder/label metadata | Medium-High | Medium | Idea (no issue yet) |
 
 ## Repository Layout
 
