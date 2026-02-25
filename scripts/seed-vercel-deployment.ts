@@ -42,7 +42,7 @@ interface ManualInferenceSession {
 
 const DEFAULT_TEMPLATE_ID = "anker-us";
 const DEFAULT_DISCOVER_MAX = 30;
-const DEFAULT_SEED_MAX = 20;
+const DEFAULT_SEED_MAX = 8;
 const DEFAULT_ALLOWED_DOMAIN = "anker.com";
 const APP_ENTRY_REGEX = /_app\/immutable\/entry\/app\.[^"' )]+\.js/;
 const NODE_ZERO_REGEX = /\.\.\/nodes\/0\.[^"' )]+\.js/;
@@ -290,8 +290,7 @@ const parseTrailingJson = <T>(text: string): T | null => {
     return match.index ?? -1;
   });
 
-  for (let cursor = startIndexes.length - 1; cursor >= 0; cursor -= 1) {
-    const start = startIndexes[cursor];
+  for (const start of startIndexes) {
     if (start < 0) {
       continue;
     }
@@ -299,10 +298,14 @@ const parseTrailingJson = <T>(text: string): T | null => {
     if (!candidate) {
       continue;
     }
+    const trailing = text.slice(start + candidate.length).trim();
+    if (trailing.length > 0) {
+      continue;
+    }
     try {
       return JSON.parse(candidate) as T;
     } catch {
-      // Keep scanning older candidates.
+      // Keep scanning candidates.
     }
   }
 
@@ -552,6 +555,11 @@ const main = async (): Promise<void> => {
     { limit: 500 },
     backendDir
   );
+  if (!Array.isArray(rows)) {
+    throw new Error(
+      `ingestQueries:getTopCables returned non-array payload: ${JSON.stringify(rows)}`
+    );
+  }
   const quality = analyzeRows(rows);
 
   console.log("Quality summary:");
