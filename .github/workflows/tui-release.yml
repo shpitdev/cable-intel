@@ -80,6 +80,7 @@ jobs:
       PUBLIC_CONVEX_URL: "https://example.convex.cloud"
       BROWSERBASE_API_KEY: ${{ secrets.BROWSERBASE_API_KEY }}
       BROWSERBASE_PROJECT_ID: ${{ secrets.BROWSERBASE_PROJECT_ID }}
+      BROWSER_QA_BASE_URL: ${{ vars.BROWSER_QA_BASE_URL }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -108,13 +109,7 @@ jobs:
             ${{ runner.os }}-playwright-
 
       - name: Install dependencies
-        run: |
-          set -euo pipefail
-          bun install --frozen-lockfile || (
-            echo "bun install failed; clearing Bun cache and retrying" >&2
-            bun pm cache rm
-            bun install --frozen-lockfile
-          )
+        run: bun install --frozen-lockfile
 
       - name: Install agent-browser CLI
         run: npm install -g agent-browser@latest
@@ -124,14 +119,22 @@ jobs:
 
       - name: Run browser QA smoke
         run: |
-          if [ -n "${BROWSERBASE_API_KEY:-}" ] && [ -n "${BROWSERBASE_PROJECT_ID:-}" ]; then
-            export USE_BROWSERBASE=1
-            echo "Browserbase credentials detected; replay URLs will be captured."
-          else
-            export USE_BROWSERBASE=0
-            echo "Browserbase credentials missing; running local browser provider."
+          if [ -z "${BROWSERBASE_API_KEY:-}" ]; then
+            echo "Missing required secret: BROWSERBASE_API_KEY" >&2
+            exit 1
           fi
-          bash ./scripts/browser/run-local-browser-qa.sh --out-dir artifacts/browser-qa-release
+          if [ -z "${BROWSERBASE_PROJECT_ID:-}" ]; then
+            echo "Missing required secret: BROWSERBASE_PROJECT_ID" >&2
+            exit 1
+          fi
+          if [ -z "${BROWSER_QA_BASE_URL:-}" ]; then
+            echo "Missing required repository variable: BROWSER_QA_BASE_URL" >&2
+            exit 1
+          fi
+          USE_BROWSERBASE=1 \
+            bash ./scripts/browser/run-local-browser-qa.sh \
+              --external-url "${BROWSER_QA_BASE_URL}" \
+              --out-dir artifacts/browser-qa-release
 
       - name: Upload browser QA artifact
         uses: actions/upload-artifact@v4

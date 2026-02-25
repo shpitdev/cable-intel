@@ -17,6 +17,7 @@ This repo uses **Ultracite** (Biome) for formatting + linting. Prefer simple, ex
 3. **Make progress autonomously**: don’t stop at “requested change done” if there’s an obvious adjacent technical completion.
 4. **Be honest about uncertainty**: when you can’t confirm something, say so and add checks/logging/tests rather than guessing.
 5. **Data quality is a first-class feature**: if the system pulls from sources, treat correctness and provenance as requirements.
+6. **No fallbacks, no masking**: fallback behavior in app code, tests, and CI is forbidden. Missing required env, upstream failures, or LLM/schema failures must fail hard and loudly.
 
 ---
 
@@ -53,7 +54,7 @@ After completing a task, do one more pass:
 ### Async / errors
 
 - Always `await` promises you create or call in `async` functions.
-- Use `try/catch` where you can add meaning: context, fallback, or cleanup.
+- Use `try/catch` where you can add meaning: context or cleanup, then rethrow/fail.
 - Throw `Error` objects with descriptive messages (include key identifiers).
 - Fail fast with early returns to reduce nesting.
 

@@ -1087,7 +1087,6 @@ export const createShopifyCableSource = (
   template: ShopifyCableSourceTemplate
 ): ShopifyCableSource => {
   let cachedBuildId: string | undefined;
-  let loadedSearchCatalogForTemplateQuery = false;
   let suggestEndpointUnsupported = false;
   const suggestProductByHandle = new Map<
     string,
@@ -1250,7 +1249,6 @@ export const createShopifyCableSource = (
     const products = await tryFetchSearchSuggestProducts(
       template.searchQueryValue
     );
-    loadedSearchCatalogForTemplateQuery = true;
 
     return products
       .map((product) => ({
@@ -1321,17 +1319,6 @@ export const createShopifyCableSource = (
     );
     if (byHandleDescription) {
       return byHandleDescription;
-    }
-
-    if (!loadedSearchCatalogForTemplateQuery) {
-      loadedSearchCatalogForTemplateQuery = true;
-      const fallbackResults = await tryFetchSearchSuggestProducts(
-        template.searchQueryValue
-      );
-      return getSuggestDescriptionFromProducts(
-        fallbackResults,
-        normalizedHandle
-      );
     }
 
     return "";

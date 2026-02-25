@@ -34,9 +34,7 @@ derive_preview_slot_name() {
 if [[ -n "${CONVEX_DEPLOY_KEY:-}" || (-n "${CONVEX_SELF_HOSTED_URL:-}" && -n "${CONVEX_SELF_HOSTED_ADMIN_KEY:-}") ]]; then
   cd "${REPO_ROOT}/packages/backend"
   preview_slot_name=""
-  if ! preview_slot_name="$(derive_preview_slot_name)"; then
-    preview_slot_name=""
-  fi
+  preview_slot_name="$(derive_preview_slot_name)"
   if [[ -n "${preview_slot_name}" ]]; then
     echo "Using Convex preview slot '${preview_slot_name}' (pool size ${CONVEX_PREVIEW_SLOT_COUNT:-32})."
   fi
@@ -52,10 +50,8 @@ if [[ -n "${CONVEX_DEPLOY_KEY:-}" || (-n "${CONVEX_SELF_HOSTED_URL:-}" && -n "${
   if [[ -n "${preview_slot_name}" ]]; then
     deploy_args+=(--preview-create "${preview_slot_name}")
   fi
-  if bun "${deploy_args[@]}"; then
-    exit 0
-  fi
-  cd "${REPO_ROOT}"
+  bun "${deploy_args[@]}"
+  exit 0
 fi
 
 if [[ -n "${CONVEX_URL:-}" && -z "${PUBLIC_CONVEX_URL:-}" ]]; then
@@ -64,8 +60,8 @@ if [[ -n "${CONVEX_URL:-}" && -z "${PUBLIC_CONVEX_URL:-}" ]]; then
 fi
 
 if [[ -z "${PUBLIC_CONVEX_URL:-}" ]]; then
-  export PUBLIC_CONVEX_URL="https://placeholder.convex.cloud"
-  echo "Warning: PUBLIC_CONVEX_URL is not set. Building with placeholder URL and disabled Convex client."
+  echo "PUBLIC_CONVEX_URL is required when CONVEX deploy credentials are not configured." >&2
+  exit 1
 fi
 
 cd "${REPO_ROOT}"

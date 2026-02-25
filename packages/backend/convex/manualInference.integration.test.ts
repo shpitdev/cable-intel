@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "bun:test";
+import { describe, expect, it } from "bun:test";
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { convexTest } from "convex-test";
@@ -46,15 +46,13 @@ const modules = (() => {
   return loaders;
 })();
 
-const ORIGINAL_AI_GATEWAY_API_KEY = process.env.AI_GATEWAY_API_KEY;
-
-afterEach(() => {
-  if (ORIGINAL_AI_GATEWAY_API_KEY === undefined) {
-    process.env.AI_GATEWAY_API_KEY = undefined;
-  } else {
-    process.env.AI_GATEWAY_API_KEY = ORIGINAL_AI_GATEWAY_API_KEY;
+const requireEnv = (key: "AI_GATEWAY_API_KEY"): string => {
+  const value = process.env[key]?.trim();
+  if (!value) {
+    throw new Error(`Missing required environment variable for test: ${key}`);
   }
-});
+  return value;
+};
 
 describe("manualInference", () => {
   it("creates a default session and allows direct draft patching", async () => {
@@ -85,7 +83,7 @@ describe("manualInference", () => {
   });
 
   it("submits free-text prompt and pre-populates draft fields", async () => {
-    process.env.AI_GATEWAY_API_KEY = undefined;
+    requireEnv("AI_GATEWAY_API_KEY");
     const t = convexTest(schema, modules);
 
     const result = await t.action(api.manualInference.submitPrompt, {
@@ -103,7 +101,7 @@ describe("manualInference", () => {
   });
 
   it("runs a follow-up question loop and applies answer patches", async () => {
-    process.env.AI_GATEWAY_API_KEY = undefined;
+    requireEnv("AI_GATEWAY_API_KEY");
     const t = convexTest(schema, modules);
 
     const inference = await t.action(api.manualInference.submitPrompt, {

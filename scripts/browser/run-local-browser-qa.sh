@@ -96,8 +96,8 @@ SMOKE_ARGS=(
 SMOKE_USE_BROWSERBASE="${USE_BROWSERBASE:-0}"
 if [[ "$SMOKE_USE_BROWSERBASE" == "1" ]]; then
   if is_local_base_url "$BASE_URL"; then
-    echo "USE_BROWSERBASE=1 ignored for local URL (${BASE_URL}); using local provider."
-    SMOKE_USE_BROWSERBASE="0"
+    echo "USE_BROWSERBASE=1 requires a publicly reachable URL; got local URL (${BASE_URL})." >&2
+    exit 1
   else
     SMOKE_ARGS+=(--use-browserbase)
   fi
