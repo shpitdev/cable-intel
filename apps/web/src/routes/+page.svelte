@@ -36,6 +36,7 @@
   const CONVEX_RECONNECTING_NOTE =
     "Connection to workspace data is reconnecting. Results will appear once reconnected.";
   const WORKSPACE_STORAGE_KEY = "cable-intel-workspace-id";
+  // Keep this page as a deployment trigger touchpoint for preview validation.
   const MOBILE_FACET_QUERY = "(max-width: 1179px)";
   const FACET_DIMENSIONS = [
     "brand",
