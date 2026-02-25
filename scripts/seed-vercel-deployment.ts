@@ -42,7 +42,7 @@ interface ManualInferenceSession {
 
 const DEFAULT_TEMPLATE_ID = "anker-us";
 const DEFAULT_DISCOVER_MAX = 30;
-const DEFAULT_SEED_MAX = 20;
+const DEFAULT_SEED_MAX = 8;
 const DEFAULT_ALLOWED_DOMAIN = "anker.com";
 const APP_ENTRY_REGEX = /_app\/immutable\/entry\/app\.[^"' )]+\.js/;
 const NODE_ZERO_REGEX = /\.\.\/nodes\/0\.[^"' )]+\.js/;
