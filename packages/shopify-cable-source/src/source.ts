@@ -111,6 +111,8 @@ interface NextDataDocument {
   };
 }
 
+const PRODUCT_COLLECTION_DISCOVERY_PATH = "/collections/cables";
+
 interface ConnectorPairResult {
   evidenceSnippet: string;
   from: string;
@@ -1259,6 +1261,61 @@ export const createShopifyCableSource = (
       .filter((product) => product.handle && product.title);
   };
 
+  const fetchCollectionCandidates = async (): Promise<
+    ShopifyProductCandidate[]
+  > => {
+    const collectionUrl = new URL(
+      PRODUCT_COLLECTION_DISCOVERY_PATH,
+      template.baseUrl
+    );
+    const response = await fetchWithTimeout(collectionUrl.toString());
+    if (!response.ok) {
+      throw new HttpError(
+        `Failed to fetch product collection page (${response.status})`,
+        response.status
+      );
+    }
+
+    const html = await response.text();
+    const nextData = parseNextDataFromHtml(html);
+    const pageProps =
+      nextData.props?.pageProps ?? nextData.pageProps ?? nextData;
+    return collectCandidates(pageProps);
+  };
+
+  const tryFetchCollectionCandidates = async (): Promise<
+    ShopifyProductCandidate[]
+  > => {
+    try {
+      return await fetchCollectionCandidates();
+    } catch (error) {
+      if (error instanceof HttpError && error.status === 404) {
+        return [];
+      }
+      throw error;
+    }
+  };
+
+  const fetchProductFromPage = async (
+    productPath: string
+  ): Promise<ShopifyProduct | null> => {
+    const productUrl = new URL(productPath, template.baseUrl);
+    const response = await fetchWithTimeout(productUrl.toString());
+    if (response.status === 404) {
+      return null;
+    }
+    if (!response.ok) {
+      throw new HttpError(
+        `Failed to fetch product page (${response.status})`,
+        response.status
+      );
+    }
+
+    const html = await response.text();
+    const payload = parseNextDataFromHtml(html);
+    return getProductFromNextData(payload);
+  };
+
   const shouldSkipSupplementalLookup = (product: ShopifyProduct): boolean => {
     const baseDescription = combineUniqueText(
       product.description,
@@ -1418,6 +1475,10 @@ export const createShopifyCableSource = (
       candidates = await fetchSearchSuggestCandidates();
     }
 
+    if (candidates.length === 0) {
+      candidates = await tryFetchCollectionCandidates();
+    }
+
     const productUrls = candidates
       .filter((candidate) => template.includeCandidate(candidate))
       .map((candidate) => {
@@ -1463,6 +1524,10 @@ export const createShopifyCableSource = (
 
     if (!product) {
       product = await fetchProductJson(handle);
+    }
+
+    if (!product) {
+      product = await fetchProductFromPage(productPath);
     }
 
     if (!product) {
