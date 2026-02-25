@@ -1,4 +1,4 @@
-name: preview-seed
+name: preview-validation
 
 on:
   deployment_status:
@@ -6,11 +6,11 @@ on:
 permissions:
   contents: read
   deployments: read
-  pull-requests: read
+  pull-requests: write
 
 jobs:
   seed-preview:
-    name: Seed Convex preview catalog
+    name: Preview validation (seed + runtime QA)
     if: >
       github.event.deployment_status.state == 'success' &&
       (
@@ -27,6 +27,8 @@ jobs:
       DEPLOYMENT_REF: ${{ github.event.deployment.ref }}
       DEPLOYMENT_SHA: ${{ github.event.deployment.sha }}
       CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY_PREVIEW }}
+      BROWSERBASE_API_KEY: ${{ secrets.BROWSERBASE_API_KEY }}
+      BROWSERBASE_PROJECT_ID: ${{ secrets.BROWSERBASE_PROJECT_ID }}
     steps:
       - name: Resolve pull request context
         id: pr
@@ -114,6 +116,18 @@ jobs:
             exit 1
           fi
 
+      - name: Check Browserbase credentials
+        if: steps.pr.outputs.skip != 'true'
+        run: |
+          if [ -z "${BROWSERBASE_API_KEY:-}" ]; then
+            echo "BROWSERBASE_API_KEY secret is not configured."
+            exit 1
+          fi
+          if [ -z "${BROWSERBASE_PROJECT_ID:-}" ]; then
+            echo "BROWSERBASE_PROJECT_ID secret is not configured."
+            exit 1
+          fi
+
       - name: Checkout
         if: steps.pr.outputs.skip != 'true'
         uses: actions/checkout@v4
@@ -128,6 +142,14 @@ jobs:
         if: steps.pr.outputs.skip != 'true'
         run: bun install --frozen-lockfile
 
+      - name: Install agent-browser CLI
+        if: steps.pr.outputs.skip != 'true'
+        run: npm install -g agent-browser@latest
+
+      - name: Install Playwright Chromium
+        if: steps.pr.outputs.skip != 'true'
+        run: npx playwright install --with-deps chromium
+
       - name: Seed preview catalog
         id: seed
         if: steps.pr.outputs.skip != 'true'
@@ -141,6 +163,88 @@ jobs:
             echo "Target preview: ${VERCEL_URL}"
             bun run scripts/seed-vercel-deployment.ts --vercel-url "${VERCEL_URL}"
           } | tee "$LOG_FILE"
+
+      - name: Run browser QA on preview deployment
+        if: steps.pr.outputs.skip != 'true'
+        run: |
+          USE_BROWSERBASE=1 \
+            bash ./scripts/browser/run-local-browser-qa.sh \
+              --external-url "${PREVIEW_URL}" \
+              --out-dir artifacts/browser-qa-preview
+
+      - name: Read replay metadata
+        id: browser_qa_meta
+        if: steps.pr.outputs.skip != 'true'
+        run: |
+          REPLAY_URL=$(jq -r '.browserbaseReplayUrl // empty' artifacts/browser-qa-preview/results.json)
+          echo "replay_url=${REPLAY_URL}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload browser QA artifacts
+        id: upload_browser_qa
+        if: steps.pr.outputs.skip != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-qa-preview-${{ github.event.deployment.id }}
+          path: artifacts/browser-qa-preview/**
+          if-no-files-found: error
+
+      - name: Comment browser QA links on PR
+        if: steps.pr.outputs.skip != 'true'
+        uses: actions/github-script@v7
+        env:
+          ARTIFACT_URL: ${{ steps.upload_browser_qa.outputs.artifact-url }}
+          REPLAY_URL: ${{ steps.browser_qa_meta.outputs.replay_url }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+        with:
+          script: |
+            const marker = '<!-- browser-qa-report -->';
+            const issue_number = Number.parseInt(process.env.PR_NUMBER ?? "", 10);
+            if (!Number.isFinite(issue_number) || issue_number <= 0) {
+              core.info("No PR number found; skipping browser QA comment.");
+              return;
+            }
+
+            const artifactUrl = process.env.ARTIFACT_URL ?? '';
+            const replayUrl = process.env.REPLAY_URL ?? '';
+            const bodyLines = [
+              marker,
+              '## Browser QA (agent-browser)',
+              artifactUrl
+                ? `- Screenshots artifact: [browser-qa](${artifactUrl})`
+                : '- Screenshots artifact: unavailable',
+              replayUrl
+                ? `- Browserbase replay: [session replay](${replayUrl})`
+                : '- Browserbase replay: unavailable',
+            ];
+            const body = bodyLines.join('\n');
+
+            const { owner, repo } = context.repo;
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number,
+              per_page: 100,
+            });
+            const existing = comments.find((comment) =>
+              typeof comment.body === 'string' && comment.body.includes(marker)
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: existing.id,
+                body,
+              });
+              return;
+            }
+
+            await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number,
+              body,
+            });
 
       - name: Publish summary
         if: steps.pr.outputs.skip != 'true' && always()
@@ -162,6 +266,19 @@ jobs:
             echo "- Result: ${SUMMARY_STATUS}"
             echo "- SHA: ${DEPLOYMENT_SHA}"
           } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ -f "artifacts/browser-qa-preview/results.json" ]; then
+            REPLAY_URL=$(jq -r '.browserbaseReplayUrl // empty' artifacts/browser-qa-preview/results.json)
+            {
+              echo ""
+              echo "## Browser QA"
+              if [ -n "$REPLAY_URL" ]; then
+                echo "- Browserbase replay: ${REPLAY_URL}"
+              else
+                echo "- Browserbase replay: unavailable"
+              fi
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
 
           if [ -n "${LOG_PATH:-}" ] && [ -f "${LOG_PATH}" ]; then
             {
