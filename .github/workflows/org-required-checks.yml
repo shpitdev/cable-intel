@@ -12,9 +12,154 @@ on:
 jobs:
   Check:
     runs-on: ubuntu-latest
+    permissions:
+      checks: read
+      contents: read
+      pull-requests: read
+      statuses: read
     steps:
-      - name: Check
-        run: echo "Org required check is present."
+      - name: Wait for merge gates
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const pr = context.payload.pull_request;
+            if (!pr) {
+              core.info("No pull request context. Passing check.");
+              return;
+            }
+
+            const pull_number = pr.number;
+            const headSha = pr.head.sha;
+
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner,
+              repo,
+              pull_number,
+              per_page: 100,
+            });
+
+            const ciIgnoredPatterns = [
+              /^docs\//,
+              /^README\.md$/,
+              /^AGENTS\.md$/,
+              /^\.codex\//,
+              /^\.opencode\//,
+            ];
+            const hasCiRelevantChange = files.some((file) => {
+              return !ciIgnoredPatterns.some((pattern) => pattern.test(file.filename));
+            });
+
+            const requiredContexts = ["Vercel"];
+            if (hasCiRelevantChange) {
+              requiredContexts.push("checks", "Preview validation (seed + runtime QA)");
+            }
+
+            core.info(
+              `Required contexts: ${requiredContexts.join(", ")} (ciRelevant=${hasCiRelevantChange})`,
+            );
+
+            const deadline = Date.now() + 20 * 60 * 1000;
+            const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+            const normalizeStatusContext = (state) => {
+              if (state === "success") {
+                return "success";
+              }
+              if (state === "failure" || state === "error") {
+                return "failure";
+              }
+              return "pending";
+            };
+
+            const normalizeCheckRun = (checkRun) => {
+              if (checkRun.status !== "completed") {
+                return "pending";
+              }
+              if (checkRun.conclusion === "success") {
+                return "success";
+              }
+              if (checkRun.conclusion === "neutral") {
+                return "success";
+              }
+              return "failure";
+            };
+
+            while (Date.now() < deadline) {
+              const [checkRunsResp, statusesResp] = await Promise.all([
+                github.rest.checks.listForRef({
+                  owner,
+                  repo,
+                  ref: headSha,
+                  per_page: 100,
+                }),
+                github.rest.repos.listCommitStatusesForRef({
+                  owner,
+                  repo,
+                  ref: headSha,
+                  per_page: 100,
+                }),
+              ]);
+
+              const checkRunsByName = new Map();
+              for (const checkRun of checkRunsResp.data.check_runs) {
+                if (!checkRunsByName.has(checkRun.name)) {
+                  checkRunsByName.set(checkRun.name, checkRun);
+                }
+              }
+
+              const statusesByContext = new Map();
+              for (const status of statusesResp.data) {
+                if (!statusesByContext.has(status.context)) {
+                  statusesByContext.set(status.context, status);
+                }
+              }
+
+              let hasPending = false;
+              for (const contextName of requiredContexts) {
+                const checkRun = checkRunsByName.get(contextName);
+                if (checkRun) {
+                  const normalized = normalizeCheckRun(checkRun);
+                  if (normalized === "failure") {
+                    core.setFailed(
+                      `${contextName} failed with conclusion '${checkRun.conclusion ?? "unknown"}'.`,
+                    );
+                    return;
+                  }
+                  if (normalized === "pending") {
+                    hasPending = true;
+                  }
+                  continue;
+                }
+
+                const status = statusesByContext.get(contextName);
+                if (status) {
+                  const normalized = normalizeStatusContext(status.state);
+                  if (normalized === "failure") {
+                    core.setFailed(`${contextName} failed with state '${status.state}'.`);
+                    return;
+                  }
+                  if (normalized === "pending") {
+                    hasPending = true;
+                  }
+                  continue;
+                }
+
+                hasPending = true;
+              }
+
+              if (!hasPending) {
+                core.info("All required contexts passed.");
+                return;
+              }
+
+              await sleep(15000);
+            }
+
+            core.setFailed(
+              `Timed out waiting for required contexts: ${requiredContexts.join(", ")}`,
+            );
 
   ValidatePrTitle:
     runs-on: ubuntu-latest
