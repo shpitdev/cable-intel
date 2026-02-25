@@ -48,13 +48,7 @@ jobs:
             ${{ runner.os }}-bun-turbo-
 
       - name: Install dependencies
-        run: |
-          set -euo pipefail
-          bun install --frozen-lockfile || (
-            echo "bun install failed; clearing Bun cache and retrying" >&2
-            bun pm cache rm
-            bun install --frozen-lockfile
-          )
+        run: bun install --frozen-lockfile
 
       - name: Ultracite check
         run: bun x ultracite check
@@ -86,6 +80,7 @@ jobs:
       PUBLIC_CONVEX_URL: "https://example.convex.cloud"
       BROWSERBASE_API_KEY: ${{ secrets.BROWSERBASE_API_KEY }}
       BROWSERBASE_PROJECT_ID: ${{ secrets.BROWSERBASE_PROJECT_ID }}
+      BROWSER_QA_BASE_URL: ${{ vars.BROWSER_QA_BASE_URL }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -114,13 +109,7 @@ jobs:
             ${{ runner.os }}-playwright-
 
       - name: Install dependencies
-        run: |
-          set -euo pipefail
-          bun install --frozen-lockfile || (
-            echo "bun install failed; clearing Bun cache and retrying" >&2
-            bun pm cache rm
-            bun install --frozen-lockfile
-          )
+        run: bun install --frozen-lockfile
 
       - name: Install agent-browser CLI
         run: npm install -g agent-browser@latest
@@ -130,14 +119,22 @@ jobs:
 
       - name: Run browser QA smoke
         run: |
-          if [ -n "${BROWSERBASE_API_KEY:-}" ] && [ -n "${BROWSERBASE_PROJECT_ID:-}" ]; then
-            export USE_BROWSERBASE=1
-            echo "Browserbase credentials detected; replay URLs will be captured."
-          else
-            export USE_BROWSERBASE=0
-            echo "Browserbase credentials missing; running local browser provider."
+          if [ -z "${BROWSERBASE_API_KEY:-}" ]; then
+            echo "Missing required secret: BROWSERBASE_API_KEY" >&2
+            exit 1
           fi
-          bash ./scripts/browser/run-local-browser-qa.sh --out-dir artifacts/browser-qa
+          if [ -z "${BROWSERBASE_PROJECT_ID:-}" ]; then
+            echo "Missing required secret: BROWSERBASE_PROJECT_ID" >&2
+            exit 1
+          fi
+          if [ -z "${BROWSER_QA_BASE_URL:-}" ]; then
+            echo "Missing required repository variable: BROWSER_QA_BASE_URL" >&2
+            exit 1
+          fi
+          USE_BROWSERBASE=1 \
+            bash ./scripts/browser/run-local-browser-qa.sh \
+              --external-url "${BROWSER_QA_BASE_URL}" \
+              --out-dir artifacts/browser-qa
 
       - name: Read replay metadata
         id: browser_qa_meta
@@ -216,7 +213,7 @@ jobs:
             if [ -n "$REPLAY_URL" ]; then
               echo "- Browserbase replay: $REPLAY_URL" >> "$GITHUB_STEP_SUMMARY"
             else
-              echo "- Browserbase replay: unavailable (secrets not configured)" >> "$GITHUB_STEP_SUMMARY"
+              echo "- Browserbase replay: missing from results.json" >> "$GITHUB_STEP_SUMMARY"
             fi
           else
             echo "- browser smoke: failed before artifact generation" >> "$GITHUB_STEP_SUMMARY"
@@ -248,25 +245,13 @@ jobs:
             ${{ runner.os }}-bun-turbo-
 
       - name: Install dependencies
-        run: |
-          set -euo pipefail
-          bun install --frozen-lockfile || (
-            echo "bun install failed; clearing Bun cache and retrying" >&2
-            bun pm cache rm
-            bun install --frozen-lockfile
-          )
+        run: bun install --frozen-lockfile
 
       - name: Convex Shopify ingest integration test
         run: bun test packages/backend/convex/shopify.ingest.integration.test.ts
 
       - name: Shopify source integration test
-        run: |
-          set -euo pipefail
-          bun test packages/shopify-cable-source/src/source.integration.test.ts || (
-            echo "shopify source integration test failed; retrying once due possible transient upstream network/TLS issue" >&2
-            sleep 3
-            bun test packages/shopify-cable-source/src/source.integration.test.ts
-          )
+        run: bun test packages/shopify-cable-source/src/source.integration.test.ts
 
       - name: Build
         run: bun run build

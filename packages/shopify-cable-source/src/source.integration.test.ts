@@ -11,15 +11,6 @@ const UGREEN_TEMPLATE_ID = "ugreen";
 const LIGHTNING_MAX_GBPS = 0.48 as const;
 const LIGHTNING_USB_GENERATION_FRAGMENT = "USB 2.0" as const;
 const EXPECTED_BRAND = "Anker";
-const ANKER_AVAILABILITY_PROBE_LIMIT = 20;
-const ANKER_UPSTREAM_ERROR_HINTS = [
-  "certificate",
-  "tls",
-  "ssl",
-  "network",
-  "fetch",
-  "timeout",
-] as const;
 const ankerTemplate = shopifyCableTemplates.find((template) => {
   return template.id === ANKER_TEMPLATE_ID;
 });
@@ -68,100 +59,23 @@ if (!ugreenTemplate) {
   throw new Error("Missing UGREEN Shopify template");
 }
 
-let ankerUpstreamAvailable: boolean | null = null;
-
-const toErrorSignature = (error: unknown): string => {
-  const message = (() => {
-    if (error instanceof Error) {
-      return error.message;
-    }
-    if (
-      typeof error === "object" &&
-      error &&
-      "message" in error &&
-      typeof error.message === "string"
-    ) {
-      return error.message;
-    }
-    return String(error);
-  })();
-
-  const code =
-    typeof error === "object" &&
-    error &&
-    "code" in error &&
-    typeof error.code === "string"
-      ? error.code
-      : "";
-
-  return `${message} ${code}`.trim().toLowerCase();
-};
-
-const isAnkerUpstreamError = (error: unknown): boolean => {
-  const signature = toErrorSignature(error);
-  return ANKER_UPSTREAM_ERROR_HINTS.some((hint) => {
-    return signature.includes(hint);
-  });
-};
-
-const discoverAnkerProductUrls = async (args: {
-  contextLabel: string;
-  limit: number;
-}): Promise<string[] | null> => {
+const discoverAnkerProductUrls = async (limit: number): Promise<string[]> => {
   const source = createShopifyCableSource(ankerTemplate);
-  try {
-    const urls = await source.discoverProductUrls(args.limit);
-    if (urls.length === 0) {
-      ankerUpstreamAvailable = false;
-      console.warn(
-        `[shopify source integration] skipping ${args.contextLabel}: no Anker URLs discovered in this environment`
-      );
-      return null;
-    }
-    ankerUpstreamAvailable = true;
-    return urls;
-  } catch (error) {
-    if (!isAnkerUpstreamError(error)) {
-      throw error;
-    }
-    ankerUpstreamAvailable = false;
-    console.warn(
-      `[shopify source integration] skipping ${args.contextLabel}: Anker upstream unavailable (${toErrorSignature(
-        error
-      )})`
-    );
-    return null;
-  }
+  return await source.discoverProductUrls(limit);
 };
 
-const ensureAnkerUpstreamAvailable = async (
-  contextLabel: string
-): Promise<boolean> => {
-  if (ankerUpstreamAvailable === true) {
-    return true;
+const extractAnkerProduct = async (url: string) => {
+  const source = createShopifyCableSource(ankerTemplate);
+  const result = await source.extractFromProductUrl(url);
+  if (!result) {
+    throw new Error(`Expected Anker extraction result for ${url}`);
   }
-  if (ankerUpstreamAvailable === false) {
-    console.warn(
-      `[shopify source integration] skipping ${contextLabel}: Anker upstream unavailable`
-    );
-    return false;
-  }
-  const probeUrls = await discoverAnkerProductUrls({
-    contextLabel: `${contextLabel} (probe)`,
-    limit: ANKER_AVAILABILITY_PROBE_LIMIT,
-  });
-  return probeUrls !== null;
+  return result;
 };
 
 describe("shopify cable source integration", () => {
   it("discovers Anker cable product URLs from Shopify/Next data", async () => {
-    const urls = await discoverAnkerProductUrls({
-      contextLabel: "Anker URL discovery",
-      limit: 80,
-    });
-    if (!urls) {
-      return;
-    }
+    const urls = await discoverAnkerProductUrls(80);
 
     expect(urls.length).toBeGreaterThan(10);
     expect(
@@ -174,20 +88,9 @@ describe("shopify cable source integration", () => {
   }, 120_000);
 
   it("extracts full variant cable specs from a single Shopify product URL", async () => {
-    if (
-      !(await ensureAnkerUpstreamAvailable("Anker single-product extraction"))
-    ) {
-      return;
-    }
-    const source = createShopifyCableSource(ankerTemplate);
-    const result = await source.extractFromProductUrl(
+    const result = await extractAnkerProduct(
       "https://www.anker.com/products/a82e2-240w-usb-c-to-usb-c-cable"
     );
-
-    expect(result).not.toBeNull();
-    if (!result) {
-      return;
-    }
 
     expect(result.source.url).toBe(
       "https://www.anker.com/products/a82e2-240w-usb-c-to-usb-c-cable"
@@ -228,22 +131,9 @@ describe("shopify cable source integration", () => {
   }, 120_000);
 
   it("does not classify Lightning cables as Thunderbolt/USB4 class", async () => {
-    if (
-      !(await ensureAnkerUpstreamAvailable(
-        "Anker Lightning classification check"
-      ))
-    ) {
-      return;
-    }
-    const source = createShopifyCableSource(ankerTemplate);
-    const result = await source.extractFromProductUrl(
+    const result = await extractAnkerProduct(
       "https://www.anker.com/products/a8633"
     );
-
-    expect(result).not.toBeNull();
-    if (!result) {
-      return;
-    }
 
     expect(result.cables.length).toBeGreaterThan(0);
     for (const cable of result.cables) {
@@ -259,20 +149,9 @@ describe("shopify cable source integration", () => {
   }, 120_000);
 
   it("normalizes beta-like vendor aliases to the canonical template brand", async () => {
-    if (
-      !(await ensureAnkerUpstreamAvailable("Anker brand normalization check"))
-    ) {
-      return;
-    }
-    const source = createShopifyCableSource(ankerTemplate);
-    const result = await source.extractFromProductUrl(
+    const result = await extractAnkerProduct(
       "https://www.anker.com/products/a84n1"
     );
-
-    expect(result).not.toBeNull();
-    if (!result) {
-      return;
-    }
 
     expect(result.cables.length).toBeGreaterThan(0);
     for (const cable of result.cables) {
@@ -281,22 +160,9 @@ describe("shopify cable source integration", () => {
   }, 120_000);
 
   it("prefers explicit per-variant wattage labels over page-level defaults", async () => {
-    if (
-      !(await ensureAnkerUpstreamAvailable(
-        "Anker per-variant wattage preference check"
-      ))
-    ) {
-      return;
-    }
-    const source = createShopifyCableSource(ankerTemplate);
-    const result = await source.extractFromProductUrl(
+    const result = await extractAnkerProduct(
       "https://www.anker.com/products/a8552"
     );
-
-    expect(result).not.toBeNull();
-    if (!result) {
-      return;
-    }
 
     const variantsWith240Label = result.cables.filter((cable) => {
       return cable.variant?.toLowerCase().includes("240w");
@@ -307,21 +173,10 @@ describe("shopify cable source integration", () => {
     }
   }, 120_000);
 
-  it("uses model hints before SKU fallback when a single variant is 'Default Title'", async () => {
-    if (
-      !(await ensureAnkerUpstreamAvailable("Anker model hint fallback check"))
-    ) {
-      return;
-    }
-    const source = createShopifyCableSource(ankerTemplate);
-    const result = await source.extractFromProductUrl(
+  it("uses model hints before SKU when a single variant is 'Default Title'", async () => {
+    const result = await extractAnkerProduct(
       "https://www.anker.com/products/b81a2"
     );
-
-    expect(result).not.toBeNull();
-    if (!result) {
-      return;
-    }
 
     expect(result.cables.length).toBeGreaterThan(0);
     for (const cable of result.cables) {
@@ -332,22 +187,9 @@ describe("shopify cable source integration", () => {
   }, 120_000);
 
   it("does not emit optional evidence refs without snippets", async () => {
-    if (
-      !(await ensureAnkerUpstreamAvailable(
-        "Anker evidence snippet enforcement check"
-      ))
-    ) {
-      return;
-    }
-    const source = createShopifyCableSource(ankerTemplate);
-    const result = await source.extractFromProductUrl(
+    const result = await extractAnkerProduct(
       "https://www.anker.com/products/a8662"
     );
-
-    expect(result).not.toBeNull();
-    if (!result) {
-      return;
-    }
 
     expect(result.cables.length).toBeGreaterThan(0);
     for (const cable of result.cables) {
@@ -358,20 +200,9 @@ describe("shopify cable source integration", () => {
   }, 120_000);
 
   it("prefixes model titles with brand when storefront title omits it", async () => {
-    if (
-      !(await ensureAnkerUpstreamAvailable("Anker model title prefix check"))
-    ) {
-      return;
-    }
-    const source = createShopifyCableSource(ankerTemplate);
-    const result = await source.extractFromProductUrl(
+    const result = await extractAnkerProduct(
       "https://www.anker.com/products/a8758"
     );
-
-    expect(result).not.toBeNull();
-    if (!result) {
-      return;
-    }
 
     expect(result.cables.length).toBeGreaterThan(0);
     for (const cable of result.cables) {
@@ -380,20 +211,9 @@ describe("shopify cable source integration", () => {
   }, 120_000);
 
   it("derives 240W power for all Anker A80E6 USB-C variants", async () => {
-    if (
-      !(await ensureAnkerUpstreamAvailable("Anker A80E6 240W derivation check"))
-    ) {
-      return;
-    }
-    const source = createShopifyCableSource(ankerTemplate);
-    const result = await source.extractFromProductUrl(
+    const result = await extractAnkerProduct(
       "https://www.anker.com/products/a80e6"
     );
-
-    expect(result).not.toBeNull();
-    if (!result) {
-      return;
-    }
 
     expect(result.cables.length).toBe(7);
     for (const cable of result.cables) {
@@ -441,7 +261,7 @@ describe("shopify cable source integration", () => {
 
       expect(result).not.toBeNull();
       if (!result) {
-        continue;
+        throw new Error(`Expected extraction result for ${entry.url}`);
       }
 
       expect(result.cables.length).toBeGreaterThanOrEqual(entry.minVariants);
@@ -470,7 +290,9 @@ describe("shopify cable source integration", () => {
 
     expect(result).not.toBeNull();
     if (!result) {
-      return;
+      throw new Error(
+        "Expected extraction result for Native Union belt-cable-duo"
+      );
     }
 
     expect(result.cables.length).toBeGreaterThan(0);

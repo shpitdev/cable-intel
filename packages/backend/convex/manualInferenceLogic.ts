@@ -74,34 +74,6 @@ const normalizeVideoSupportLabel = (
   return "unknown";
 };
 
-const normalizeFollowUpCategoryLabel = (
-  value: string
-): (typeof FOLLOW_UP_CATEGORY_VALUES)[number] | undefined => {
-  const normalized = value.trim().toLowerCase();
-  if (normalized.includes("connector")) {
-    return "connector";
-  }
-  if (
-    normalized.includes("power") ||
-    normalized.includes("charge") ||
-    normalized.includes("charg") ||
-    normalized.includes("watt")
-  ) {
-    return "power";
-  }
-  if (
-    normalized.includes("data") ||
-    normalized.includes("generation") ||
-    normalized.includes("usb")
-  ) {
-    return "data";
-  }
-  if (normalized.includes("video") || normalized.includes("display")) {
-    return "video";
-  }
-  return undefined;
-};
-
 const coerceLlmText = (value: unknown): string | undefined => {
   if (typeof value === "string") {
     return value;
@@ -170,7 +142,7 @@ const manualDraftPatchLlmSchema = z
     videoSupport: llmVideoSupportSchema.optional(),
     watts: llmPatchTextSchema.optional(),
   })
-  .passthrough();
+  .strict();
 
 export const followUpQuestionSchema = z
   .object({
@@ -188,32 +160,12 @@ export const followUpQuestionSchema = z
 
 export const manualInferenceLlmOutputSchema = z
   .object({
-    confidence: z.coerce.number().min(0).max(1).catch(0.45),
-    draftPatch: manualDraftPatchLlmSchema.default({}),
-    notes: z
-      .preprocess((value) => coerceLlmText(value), z.string().trim().min(1))
-      .optional(),
-    uncertainties: z
-      .preprocess((value) => {
-        if (!Array.isArray(value)) {
-          return [];
-        }
-        return value
-          .map((item) => {
-            if (typeof item !== "string") {
-              return undefined;
-            }
-            return normalizeFollowUpCategoryLabel(item);
-          })
-          .filter(
-            (item): item is (typeof FOLLOW_UP_CATEGORY_VALUES)[number] => {
-              return item !== undefined;
-            }
-          );
-      }, z.array(followUpCategorySchema))
-      .default([]),
+    confidence: z.number().min(0).max(1),
+    draftPatch: manualDraftPatchLlmSchema,
+    notes: z.string().trim().min(1).optional(),
+    uncertainties: z.array(followUpCategorySchema).max(4),
   })
-  .passthrough();
+  .strict();
 
 export const DEFAULT_MANUAL_DRAFT: ManualDraft = {
   connectorFrom: "Unknown",

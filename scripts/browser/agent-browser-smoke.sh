@@ -127,11 +127,11 @@ ab find role button click --name "Reset"
 ab wait 900
 ab screenshot --full "$OUT_DIR/05-after-reset.png"
 
-ab_json snapshot -i >"$OUT_DIR/final-snapshot.json" || true
-ab_json errors --clear >"$OUT_DIR/errors.json" || true
-ab_json console --clear >"$OUT_DIR/console.json" || true
-ab_json get title >"$OUT_DIR/title.json" || true
-ab_json get url >"$OUT_DIR/url.json" || true
+ab_json snapshot -i >"$OUT_DIR/final-snapshot.json"
+ab_json errors --clear >"$OUT_DIR/errors.json"
+ab_json console --clear >"$OUT_DIR/console.json"
+ab_json get title >"$OUT_DIR/title.json"
+ab_json get url >"$OUT_DIR/url.json"
 
 jq -n \
   --arg baseUrl "$BASE_URL" \

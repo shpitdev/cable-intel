@@ -363,10 +363,6 @@ const fetchShopifyProductJsonPayload = async (
   return await response.json();
 };
 
-const canUseAiGatewayEnrichment = (): boolean => {
-  return Boolean(process.env.AI_GATEWAY_API_KEY);
-};
-
 const enrichShopifyCablesFromProductJson = async (
   parsedCables: readonly ParsedCable[],
   productUrl: string,
@@ -407,45 +403,36 @@ const enrichShopifyCablesFromProductJson = async (
   let llmEnrichment: ReturnType<
     typeof shopifyJsonLlmEnrichmentSchema.parse
   > | null = null;
-  const needsLlm =
-    canUseAiGatewayEnrichment() &&
-    parsedCables.some((parsed) => {
-      const withSignals = applyShopifyJsonPowerSignals(
-        parsed,
-        canonicalUrl,
-        deterministicSignals
-      );
-      return shouldAttemptShopifyJsonEnrichment(withSignals);
-    });
+  const needsLlm = parsedCables.some((parsed) => {
+    const withSignals = applyShopifyJsonPowerSignals(
+      parsed,
+      canonicalUrl,
+      deterministicSignals
+    );
+    return shouldAttemptShopifyJsonEnrichment(withSignals);
+  });
 
   if (needsLlm) {
-    let providerConfig: ProviderConfig | null = null;
-    try {
-      providerConfig = getProviderConfig();
-    } catch {
-      providerConfig = null;
-    }
-    if (providerConfig) {
-      const { object } = await generateObject({
-        model: gateway(providerConfig.model),
-        schema: shopifyJsonLlmEnrichmentSchema,
-        system: SHOPIFY_JSON_ENRICHMENT_SYSTEM_PROMPT,
-        prompt: buildShopifyJsonEnrichmentPrompt(canonicalUrl, inputForPrompt),
-        temperature: 0,
-        experimental_telemetry: {
-          isEnabled: providerConfig.aiTelemetryEnabled,
-          functionId: "convex.ingest.enrichShopifyFromProductJson",
-          metadata: {
-            canonicalUrl,
-            workflowRunId,
-            workflowItemId,
-          },
-          recordInputs: providerConfig.aiTelemetryRecordInputs,
-          recordOutputs: providerConfig.aiTelemetryRecordOutputs,
+    const providerConfig = getProviderConfig();
+    const { object } = await generateObject({
+      model: gateway(providerConfig.model),
+      schema: shopifyJsonLlmEnrichmentSchema,
+      system: SHOPIFY_JSON_ENRICHMENT_SYSTEM_PROMPT,
+      prompt: buildShopifyJsonEnrichmentPrompt(canonicalUrl, inputForPrompt),
+      temperature: 0,
+      experimental_telemetry: {
+        isEnabled: providerConfig.aiTelemetryEnabled,
+        functionId: "convex.ingest.enrichShopifyFromProductJson",
+        metadata: {
+          canonicalUrl,
+          workflowRunId,
+          workflowItemId,
         },
-      });
-      llmEnrichment = object;
-    }
+        recordInputs: providerConfig.aiTelemetryRecordInputs,
+        recordOutputs: providerConfig.aiTelemetryRecordOutputs,
+      },
+    });
+    llmEnrichment = object;
   }
 
   return parsedCables.map((parsed) => {
@@ -727,12 +714,8 @@ export const runSeedIngest = action({
   },
   handler: async (ctx, args): Promise<RunSeedIngestResult> => {
     const retryConfig = ingestDefaults;
-    let providerConfig: ProviderConfig | null = null;
+    const providerConfig = getIngestConfig();
     const getProviderConfig = (): ProviderConfig => {
-      if (providerConfig) {
-        return providerConfig;
-      }
-      providerConfig = getIngestConfig();
       return providerConfig;
     };
     const allowedDomains = args.allowedDomains ?? [];

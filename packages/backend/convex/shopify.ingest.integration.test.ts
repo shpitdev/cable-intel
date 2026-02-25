@@ -61,91 +61,55 @@ const modules = (() => {
   return loaders;
 })();
 
-const hasReachableSeedUrl = (args: {
-  completedItems: number;
-  failedItems: number;
-  label: string;
-  totalItems: number;
-}): boolean => {
-  if (args.completedItems > 0) {
-    return true;
+const requireEnv = (
+  key: "AI_GATEWAY_API_KEY" | "FIRECRAWL_API_KEY"
+): string => {
+  const value = process.env[key]?.trim();
+  if (!value) {
+    throw new Error(`Missing required environment variable for test: ${key}`);
   }
-  if (args.failedItems === args.totalItems && args.totalItems > 0) {
-    console.warn(
-      `[shopify ingest integration] skipping ${args.label}: all seed URLs failed in this environment`
-    );
-    return false;
-  }
-  return true;
+  return value;
 };
 
 describe("shopify ingest integration", () => {
   it(
-    "ingests Anker Shopify product URLs without AI/Firecrawl env keys",
+    "ingests Anker Shopify product URLs",
     async () => {
-      const previousAiGateway = process.env.AI_GATEWAY_API_KEY;
-      const previousFirecrawl = process.env.FIRECRAWL_API_KEY;
+      requireEnv("AI_GATEWAY_API_KEY");
+      requireEnv("FIRECRAWL_API_KEY");
+      const t = convexTest(schema, modules);
 
-      process.env.AI_GATEWAY_API_KEY = undefined;
-      process.env.FIRECRAWL_API_KEY = undefined;
+      const ingestResult = await t.action(api.ingest.runSeedIngest, {
+        seedUrls: [
+          "https://www.anker.com/products/a82e2-240w-usb-c-to-usb-c-cable",
+        ],
+      });
 
-      try {
-        const t = convexTest(schema, modules);
+      expect(ingestResult.totalItems).toBe(EXPECT_TOTAL_ITEMS);
+      expect(ingestResult.completedItems).toBe(EXPECT_COMPLETED_ITEMS);
+      expect(ingestResult.failedItems).toBe(EXPECT_FAILED_ITEMS);
 
-        const ingestResult = await t.action(api.ingest.runSeedIngest, {
-          seedUrls: [
-            "https://www.anker.com/products/a82e2-240w-usb-c-to-usb-c-cable",
-          ],
-        });
+      const report = await t.query(api.ingestQueries.getWorkflowReport, {
+        workflowRunId: ingestResult.workflowRunId,
+        limit: TOP_CABLE_LIMIT,
+      });
 
-        if (
-          !hasReachableSeedUrl({
-            completedItems: ingestResult.completedItems,
-            failedItems: ingestResult.failedItems,
-            label: "Anker URL ingest",
-            totalItems: ingestResult.totalItems,
-          })
-        ) {
-          return;
-        }
+      const workflowRows = report.cables.filter((row) => {
+        return row.productUrl?.includes(TARGET_PRODUCT_SLUG);
+      });
+      expect(workflowRows.length).toBeGreaterThan(MIN_ANKER_ROWS);
 
-        expect(ingestResult.totalItems).toBe(EXPECT_TOTAL_ITEMS);
-        expect(ingestResult.completedItems).toBe(EXPECT_COMPLETED_ITEMS);
-        expect(ingestResult.failedItems).toBe(EXPECT_FAILED_ITEMS);
+      const topCables = await t.query(api.ingestQueries.getTopCables, {
+        limit: TOP_CABLE_LIMIT,
+      });
 
-        const report = await t.query(api.ingestQueries.getWorkflowReport, {
-          workflowRunId: ingestResult.workflowRunId,
-          limit: TOP_CABLE_LIMIT,
-        });
+      const ankerRows = topCables.filter((row) => {
+        return row.productUrl?.includes(TARGET_PRODUCT_SLUG);
+      });
 
-        const workflowRows = report.cables.filter((row) => {
-          return row.productUrl?.includes(TARGET_PRODUCT_SLUG);
-        });
-        expect(workflowRows.length).toBeGreaterThan(MIN_ANKER_ROWS);
-
-        const topCables = await t.query(api.ingestQueries.getTopCables, {
-          limit: TOP_CABLE_LIMIT,
-        });
-
-        const ankerRows = topCables.filter((row) => {
-          return row.productUrl?.includes(TARGET_PRODUCT_SLUG);
-        });
-
-        expect(ankerRows.length).toBeGreaterThan(MIN_ANKER_ROWS);
-        expect(ankerRows.some((row) => row.sku === EXPECTED_SKU)).toBeTruthy();
-        expect(ankerRows.every((row) => row.imageUrls.length > 0)).toBeTruthy();
-      } finally {
-        if (previousAiGateway !== undefined) {
-          process.env.AI_GATEWAY_API_KEY = previousAiGateway;
-        } else {
-          process.env.AI_GATEWAY_API_KEY = undefined;
-        }
-        if (previousFirecrawl !== undefined) {
-          process.env.FIRECRAWL_API_KEY = previousFirecrawl;
-        } else {
-          process.env.FIRECRAWL_API_KEY = undefined;
-        }
-      }
+      expect(ankerRows.length).toBeGreaterThan(MIN_ANKER_ROWS);
+      expect(ankerRows.some((row) => row.sku === EXPECTED_SKU)).toBeTruthy();
+      expect(ankerRows.every((row) => row.imageUrls.length > 0)).toBeTruthy();
     },
     TEST_TIMEOUT_MS
   );
@@ -153,22 +117,13 @@ describe("shopify ingest integration", () => {
   it(
     "keeps Anker A80E6 USB-C rows quality-ready with 240W evidence",
     async () => {
+      requireEnv("AI_GATEWAY_API_KEY");
+      requireEnv("FIRECRAWL_API_KEY");
       const t = convexTest(schema, modules);
 
       const ingestResult = await t.action(api.ingest.runSeedIngest, {
         seedUrls: [`https://www.anker.com/products/${A80E6_PRODUCT_SLUG}`],
       });
-
-      if (
-        !hasReachableSeedUrl({
-          completedItems: ingestResult.completedItems,
-          failedItems: ingestResult.failedItems,
-          label: "Anker A80E6 ingest",
-          totalItems: ingestResult.totalItems,
-        })
-      ) {
-        return;
-      }
 
       expect(ingestResult.totalItems).toBe(EXPECT_TOTAL_ITEMS);
       expect(ingestResult.completedItems).toBe(EXPECT_COMPLETED_ITEMS);
@@ -224,6 +179,8 @@ describe("shopify ingest integration", () => {
   it(
     "dedupes brand+sku rows across overlapping product URLs in top cables",
     async () => {
+      requireEnv("AI_GATEWAY_API_KEY");
+      requireEnv("FIRECRAWL_API_KEY");
       const t = convexTest(schema, modules);
 
       const ingestResult = await t.action(api.ingest.runSeedIngest, {
@@ -232,17 +189,6 @@ describe("shopify ingest integration", () => {
           `https://www.anker.com/products/${OVERLAP_PRODUCT_SLUG_TWO}`,
         ],
       });
-
-      if (
-        !hasReachableSeedUrl({
-          completedItems: ingestResult.completedItems,
-          failedItems: ingestResult.failedItems,
-          label: "Anker overlap dedupe ingest",
-          totalItems: ingestResult.totalItems,
-        })
-      ) {
-        return;
-      }
 
       expect(ingestResult.completedItems).toBe(2);
       expect(ingestResult.failedItems).toBe(0);
@@ -303,70 +249,40 @@ describe("shopify ingest integration", () => {
   it(
     "ingests Satechi USB4 rows with 100W from Shopify JSON attributes",
     async () => {
-      const previousAiGateway = process.env.AI_GATEWAY_API_KEY;
-      const previousFirecrawl = process.env.FIRECRAWL_API_KEY;
+      requireEnv("AI_GATEWAY_API_KEY");
+      requireEnv("FIRECRAWL_API_KEY");
+      const t = convexTest(schema, modules);
 
-      process.env.AI_GATEWAY_API_KEY = undefined;
-      process.env.FIRECRAWL_API_KEY = undefined;
+      const ingestResult = await t.action(api.ingest.runSeedIngest, {
+        seedUrls: [`https://satechi.com/products/${SATECHI_USB4_PRODUCT_SLUG}`],
+      });
 
-      try {
-        const t = convexTest(schema, modules);
+      expect(ingestResult.totalItems).toBe(EXPECT_TOTAL_ITEMS);
+      expect(ingestResult.completedItems).toBe(EXPECT_COMPLETED_ITEMS);
+      expect(ingestResult.failedItems).toBe(EXPECT_FAILED_ITEMS);
 
-        const ingestResult = await t.action(api.ingest.runSeedIngest, {
-          seedUrls: [
-            `https://satechi.com/products/${SATECHI_USB4_PRODUCT_SLUG}`,
-          ],
-        });
+      const workflowReport = await t.query(
+        api.ingestQueries.getWorkflowReport,
+        {
+          workflowRunId: ingestResult.workflowRunId,
+          limit: TOP_CABLE_LIMIT,
+        }
+      );
+      const workflowRows = workflowReport.cables.filter((row) => {
+        return row.productUrl?.includes(SATECHI_USB4_PRODUCT_SLUG);
+      });
 
-        if (
-          !hasReachableSeedUrl({
-            completedItems: ingestResult.completedItems,
-            failedItems: ingestResult.failedItems,
-            label: "Satechi USB4 ingest",
-            totalItems: ingestResult.totalItems,
+      expect(workflowRows.length).toBe(EXPECTED_SATECHI_USB4_ROWS);
+      for (const row of workflowRows) {
+        expect(row.connectorFrom).toBe("USB-C");
+        expect(row.connectorTo).toBe("USB-C");
+        expect(row.power.maxWatts).toBe(EXPECTED_SATECHI_USB4_WATTS);
+        expect(row.qualityState).toBe("ready");
+        expect(
+          row.evidenceRefs.some((reference) => {
+            return reference.fieldPath === "power.maxWatts";
           })
-        ) {
-          return;
-        }
-
-        expect(ingestResult.totalItems).toBe(EXPECT_TOTAL_ITEMS);
-        expect(ingestResult.completedItems).toBe(EXPECT_COMPLETED_ITEMS);
-        expect(ingestResult.failedItems).toBe(EXPECT_FAILED_ITEMS);
-
-        const workflowReport = await t.query(
-          api.ingestQueries.getWorkflowReport,
-          {
-            workflowRunId: ingestResult.workflowRunId,
-            limit: TOP_CABLE_LIMIT,
-          }
-        );
-        const workflowRows = workflowReport.cables.filter((row) => {
-          return row.productUrl?.includes(SATECHI_USB4_PRODUCT_SLUG);
-        });
-
-        expect(workflowRows.length).toBe(EXPECTED_SATECHI_USB4_ROWS);
-        for (const row of workflowRows) {
-          expect(row.connectorFrom).toBe("USB-C");
-          expect(row.connectorTo).toBe("USB-C");
-          expect(row.power.maxWatts).toBe(EXPECTED_SATECHI_USB4_WATTS);
-          expect(row.qualityState).toBe("ready");
-          expect(
-            row.evidenceRefs.some((reference) => {
-              return reference.fieldPath === "power.maxWatts";
-            })
-          ).toBe(true);
-        }
-      } finally {
-        if (previousAiGateway !== undefined) {
-          process.env.AI_GATEWAY_API_KEY = previousAiGateway;
-        } else {
-          process.env.AI_GATEWAY_API_KEY = undefined;
-        }
-        if (previousFirecrawl !== undefined) {
-          process.env.FIRECRAWL_API_KEY = previousFirecrawl;
-        } else {
-          process.env.FIRECRAWL_API_KEY = undefined;
-        }
+        ).toBe(true);
       }
     },
     TEST_TIMEOUT_MS

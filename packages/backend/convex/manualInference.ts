@@ -91,10 +91,6 @@ const normalizeWorkspaceId = (value: string): string => {
   return value.trim().toLowerCase();
 };
 
-const canUseManualInferenceLlm = (): boolean => {
-  return Boolean(process.env.AI_GATEWAY_API_KEY);
-};
-
 const trimText = (value: string): string => {
   return value.replaceAll(/\s+/g, " ").trim();
 };
@@ -471,26 +467,12 @@ export const answerQuestion = mutation({
   },
 });
 
-const tryLlmInference = async (args: {
+const runLlmInference = async (args: {
   currentDraft: ManualDraft;
   deterministic: ReturnType<typeof inferDeterministic>;
   prompt: string;
-}): Promise<{ error?: string; llmOutput?: ManualInferenceLlmOutput }> => {
-  if (!canUseManualInferenceLlm()) {
-    return {
-      error:
-        "AI_GATEWAY_API_KEY is missing; deterministic inference fallback was used.",
-    };
-  }
-
-  let providerConfig: ReturnType<typeof getManualInferenceConfig>;
-  try {
-    providerConfig = getManualInferenceConfig();
-  } catch (error) {
-    return {
-      error: toErrorMessage(error),
-    };
-  }
+}): Promise<ManualInferenceLlmOutput> => {
+  const providerConfig = getManualInferenceConfig();
 
   const abortController = new AbortController();
   const timeoutId = setTimeout(() => {
@@ -518,18 +500,14 @@ const tryLlmInference = async (args: {
       },
     });
 
-    return {
-      llmOutput: parseManualInferenceLlmOutput(object),
-    };
+    return parseManualInferenceLlmOutput(object);
   } catch (error) {
     if (abortController.signal.aborted) {
-      return {
-        error: `LLM timed out after ${MANUAL_INFERENCE_LLM_TIMEOUT_MS}ms; deterministic fallback was used.`,
-      };
+      throw new Error(
+        `LLM timed out after ${MANUAL_INFERENCE_LLM_TIMEOUT_MS}ms`
+      );
     }
-    return {
-      error: toErrorMessage(error),
-    };
+    throw new Error(toErrorMessage(error));
   } finally {
     clearTimeout(timeoutId);
   }
@@ -574,15 +552,25 @@ export const submitPrompt = action({
     );
 
     const deterministic = inferDeterministic(normalizedPrompt);
-    const llmResult = await tryLlmInference({
-      currentDraft: initialSession.draft,
-      deterministic,
-      prompt: normalizedPrompt,
-    });
-    if (llmResult.error) {
-      console.warn(
-        `[manualInference.submitPrompt] LLM inference degraded for ${normalizedWorkspaceId}: ${llmResult.error}`
+    let llmResult: ManualInferenceLlmOutput;
+    try {
+      llmResult = await runLlmInference({
+        currentDraft: initialSession.draft,
+        deterministic,
+        prompt: normalizedPrompt,
+      });
+    } catch (error) {
+      const errorMessage = `LLM inference failed for ${normalizedWorkspaceId}: ${toErrorMessage(
+        error
+      )}`;
+      await ctx.runMutation(
+        internal.manualInference.setInferenceFailedInternal,
+        {
+          workspaceId: normalizedWorkspaceId,
+          error: errorMessage,
+        }
       );
+      throw new Error(errorMessage);
     }
 
     const latestSession = await ctx.runQuery(
@@ -600,7 +588,7 @@ export const submitPrompt = action({
     const merged = mergeInferenceSignals({
       currentDraft: latestSession.draft,
       deterministic,
-      llmResult: llmResult.llmOutput,
+      llmResult,
       prompt: normalizedPrompt,
     });
 
@@ -619,7 +607,7 @@ export const submitPrompt = action({
         confidenceBand: merged.confidenceBand,
         draft: mergedDraft,
         followUpQuestions: mergedQuestions,
-        llmUsed: Boolean(llmResult.llmOutput),
+        llmUsed: true,
         notes: merged.notes,
         prompt: merged.prompt,
         status: merged.status,

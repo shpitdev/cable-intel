@@ -105,25 +105,20 @@ describe("manualInferenceLogic", () => {
     expect(answered.videoSupport).toBe("yes");
   });
 
-  it("accepts flexible llm output shapes and normalizes them", () => {
-    const llm = parseManualInferenceLlmOutput({
-      confidence: "0.88",
-      draftPatch: {
-        connectorFrom: "type-c",
-        connectorTo: "lightening",
-        usbGeneration: " usb4 ",
-        watts: 240,
-      },
-      notes: 12_345,
-      uncertainties: ["Display", "charging"],
-      extra: "ignored",
-    });
-
-    expect(llm.confidence).toBe(0.88);
-    expect(llm.draftPatch.connectorFrom).toBe("USB-C");
-    expect(llm.draftPatch.connectorTo).toBe("Lightning");
-    expect(llm.draftPatch.watts).toBe("240");
-    expect(llm.uncertainties).toEqual(["video", "power"]);
-    expect(llm.notes).toBe("12345");
+  it("rejects non-schema llm output instead of coercing it", () => {
+    expect(() => {
+      parseManualInferenceLlmOutput({
+        confidence: "0.88",
+        draftPatch: {
+          connectorFrom: "type-c",
+          connectorTo: "lightening",
+          usbGeneration: " usb4 ",
+          watts: 240,
+        },
+        notes: 12_345,
+        uncertainties: ["Display", "charging"],
+        extra: "ignored",
+      });
+    }).toThrow();
   });
 });

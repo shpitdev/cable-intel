@@ -126,13 +126,7 @@ jobs:
 
       - name: Install dependencies
         if: steps.pr.outputs.skip != 'true'
-        run: |
-          set -euo pipefail
-          bun install --frozen-lockfile || (
-            echo "bun install failed; clearing Bun cache and retrying" >&2
-            bun pm cache rm
-            bun install --frozen-lockfile
-          )
+        run: bun install --frozen-lockfile
 
       - name: Seed preview catalog
         id: seed
