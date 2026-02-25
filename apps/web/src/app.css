@@ -1192,3 +1192,5 @@ a {
     transform: translateY(0);
   }
 }
+
+/* CI touchpoint: keep a safe non-doc change location for preview-validation trigger commits. */
