@@ -28,6 +28,18 @@ interface CatalogRow {
   variant?: string;
 }
 
+interface ManualInferenceSession {
+  draft?: {
+    connectorFrom?: string;
+    connectorTo?: string;
+    gbps?: string;
+    usbGeneration?: string;
+    watts?: string;
+  };
+  lastError?: string;
+  status?: string;
+}
+
 const DEFAULT_TEMPLATE_ID = "anker-us";
 const DEFAULT_DISCOVER_MAX = 30;
 const DEFAULT_SEED_MAX = 20;
@@ -336,6 +348,86 @@ const runConvex = <T>(
   return parseJsonOutput<T>(raw);
 };
 
+const parseMaxWatts = (value: string | undefined): number => {
+  if (!value) {
+    return 0;
+  }
+  const matches = [...value.matchAll(/\d{1,3}/g)]
+    .map((match) => Number.parseInt(match[0], 10))
+    .filter((candidate) => Number.isFinite(candidate));
+  if (matches.length === 0) {
+    return 0;
+  }
+  return Math.max(...matches);
+};
+
+const verifyManualInferenceOnPreview = (
+  deploymentName: string,
+  cwd: string
+): void => {
+  const workspaceId = `preview-manual-inference-${Date.now()}`;
+
+  runConvex<unknown>(
+    "manualInference:ensureSession",
+    deploymentName,
+    { workspaceId },
+    cwd
+  );
+
+  const response = runConvex<ManualInferenceSession | null>(
+    "manualInference:submitPrompt",
+    deploymentName,
+    {
+      workspaceId,
+      prompt: "usb c to usb c cable 240w usb4 8k 60hz",
+    },
+    cwd
+  );
+
+  if (!response) {
+    throw new Error("manualInference:submitPrompt returned null.");
+  }
+  if (response.status === "failed") {
+    throw new Error(
+      `manualInference:submitPrompt failed: ${response.lastError ?? "unknown error"}`
+    );
+  }
+
+  const connectorFrom = response.draft?.connectorFrom ?? "";
+  const connectorTo = response.draft?.connectorTo ?? "";
+  if (connectorFrom !== "USB-C" || connectorTo !== "USB-C") {
+    throw new Error(
+      `manualInference connector mismatch (from=${connectorFrom}, to=${connectorTo}).`
+    );
+  }
+
+  const maxWatts = parseMaxWatts(response.draft?.watts);
+  if (maxWatts < 240) {
+    throw new Error(
+      `manualInference watts validation failed (watts='${response.draft?.watts ?? ""}').`
+    );
+  }
+
+  const generation = (response.draft?.usbGeneration ?? "").toLowerCase();
+  const gbps = (response.draft?.gbps ?? "").toLowerCase();
+  if (
+    !(
+      generation.includes("usb4") ||
+      generation.includes("thunderbolt") ||
+      gbps.includes("40") ||
+      gbps.includes("20")
+    )
+  ) {
+    throw new Error(
+      `manualInference data class validation failed (usbGeneration='${response.draft?.usbGeneration ?? ""}', gbps='${response.draft?.gbps ?? ""}').`
+    );
+  }
+
+  console.log(
+    "Manual inference runtime check passed (USB-C/USB-C, >=240W, high-speed data class)."
+  );
+};
+
 const isBlank = (value: string | undefined): boolean => {
   return !value || value.trim().length === 0;
 };
@@ -464,6 +556,8 @@ const main = async (): Promise<void> => {
 
   console.log("Quality summary:");
   console.log(JSON.stringify(quality, null, 2));
+
+  verifyManualInferenceOnPreview(deploymentName, backendDir);
 };
 
 main().catch((error) => {

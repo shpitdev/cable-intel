@@ -80,7 +80,7 @@ jobs:
       PUBLIC_CONVEX_URL: "https://example.convex.cloud"
       BROWSERBASE_API_KEY: ${{ secrets.BROWSERBASE_API_KEY }}
       BROWSERBASE_PROJECT_ID: ${{ secrets.BROWSERBASE_PROJECT_ID }}
-      BROWSER_QA_BASE_URL: ${{ vars.BROWSER_QA_BASE_URL }}
+      RELEASE_QA_TARGET_URL: ${{ vars.RELEASE_QA_TARGET_URL }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -127,13 +127,13 @@ jobs:
             echo "Missing required secret: BROWSERBASE_PROJECT_ID" >&2
             exit 1
           fi
-          if [ -z "${BROWSER_QA_BASE_URL:-}" ]; then
-            echo "Missing required repository variable: BROWSER_QA_BASE_URL" >&2
+          if [ -z "${RELEASE_QA_TARGET_URL:-}" ]; then
+            echo "Missing required repository variable: RELEASE_QA_TARGET_URL" >&2
             exit 1
           fi
           USE_BROWSERBASE=1 \
             bash ./scripts/browser/run-local-browser-qa.sh \
-              --external-url "${BROWSER_QA_BASE_URL}" \
+              --external-url "${RELEASE_QA_TARGET_URL}" \
               --out-dir artifacts/browser-qa-release
 
       - name: Upload browser QA artifact
