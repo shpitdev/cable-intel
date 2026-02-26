@@ -21,7 +21,7 @@ jobs:
       !contains(github.event.head_commit.message, 'chore: bump version')
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0
