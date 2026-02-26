@@ -46,6 +46,19 @@ if [[ -z "$BASE_URL" ]]; then
   BASE_URL="http://${HOST}:${PORT}"
 fi
 
+append_vercel_bypass_query() {
+  local raw_url="$1"
+  local bypass_secret="$2"
+  node -e '
+    const rawUrl = process.argv[1];
+    const bypassSecret = process.argv[2];
+    const url = new URL(rawUrl);
+    url.searchParams.set("x-vercel-protection-bypass", bypassSecret);
+    url.searchParams.set("x-vercel-set-bypass-cookie", "true");
+    process.stdout.write(url.toString());
+  ' "$raw_url" "$bypass_secret"
+}
+
 is_local_base_url() {
   local url="$1"
   [[ "$url" =~ ^https?://(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])(:|/|$) ]]
@@ -87,6 +100,10 @@ if [[ "$START_PREVIEW" == "1" ]]; then
   ) >/tmp/cable-intel-web-preview.log 2>&1 &
   PREVIEW_PID="$!"
   wait_for_url "$BASE_URL"
+fi
+
+if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
+  BASE_URL="$(append_vercel_bypass_query "$BASE_URL" "$VERCEL_AUTOMATION_BYPASS_SECRET")"
 fi
 
 SMOKE_ARGS=(
