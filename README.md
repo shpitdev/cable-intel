@@ -1,73 +1,29 @@
 # Cable Intel
 
-Cable Intel helps people with large cable collections identify the right cable fast, apply a consistent physical label system, and stop relying on memory, random tests, or spreadsheets.
+Cable Intel helps you identify cables quickly, label them consistently, and avoid trial-and-error.
 
-## Why This Exists
+[![Runtime: Bun](https://img.shields.io/badge/runtime-Bun-black?logo=bun)](https://bun.sh/)
+[![Frontend: SvelteKit](https://img.shields.io/badge/frontend-SvelteKit-ff3e00?logo=svelte)](https://kit.svelte.dev/)
+[![Backend: Convex](https://img.shields.io/badge/backend-Convex-111111)](https://www.convex.dev/)
+[![CI: GitHub Actions](https://img.shields.io/badge/ci-GitHub_Actions-2088FF?logo=githubactions)](https://docs.github.com/actions)
+[![Deploy: Vercel](https://img.shields.io/badge/deploy-Vercel-000000?logo=vercel)](https://vercel.com/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
 
-When you have dozens or hundreds of cables on a wall, day-to-day cable choice is slow and error-prone.
+## What It Does
 
-| Pain | Typical workaround | What Cable Intel changes |
-|---|---|---|
-| "I cannot tell what this cable can do from a quick glance." | Search product pages manually or test against devices. | Identify by catalog row or markings, then get a capability profile immediately. |
-| "My labels are inconsistent." | Invent a personal color system and hope everyone follows it. | Generate deterministic `velcro strap + holder` color recommendations from cable capability. |
-| "I lose track of duplicates and what needs to be re-printed." | Keep ad hoc notes/spreadsheets. | Moves toward a virtual wall and inventory-first workflow (planned). |
+- Identifies cables from catalog data or free-text printed markings.
+- Infers connector/power/data/video capabilities and summarizes expected behavior.
+- Suggests deterministic physical label colors for strap and holder classes.
+- Supports catalog filtering (brand, connector type, length, color, price bucket).
+- Includes a TUI for ingest discovery, seeding, and quality checks.
 
-Works well with physical systems like Multiboard + 3D printed holders, where consistency matters.
+## How It Works
 
-## What Exists Now
-
-- Web workspace for cable identification and label assignment.
-- Two identification paths:
-  - Catalog path (Anker-first ingest today).
-  - Manual markings path (works even when catalog has no match).
-- Automatic color output:
-  - `Velcro strap color` for data/video class.
-  - `Holder color` for charging/power class.
-- Capability summary with practical guidance for power, data, and video expectations.
-- Catalog search and filtering (brand, connector type, length, color; price facet is scaffolded but price ingest is pending).
-- Convex ingest pipeline that stores evidence-backed normalized specs and quality state.
-- TUI ingest manager for discovery, seed runs, and quality reporting.
-
-See `docs/ARCHITECTURE_SPEC.md` for architecture details.
-
-## Future Features Under Consideration
-
-These are open TODO/spike items already tracked in GitHub:
-
-| Candidate | Pain solved | Status |
-|---|---|---|
-| Hybrid search + price ingest (facets + lexical + semantic rerank) | Improves "find the right cable" speed for natural-language queries | https://github.com/shpitdev/cable-intel/issues/2 |
-
-## Product Planning (Working Draft)
-
-Current constraint: there is no auth, no multi-user model, and no per-user saved workspace yet. That is the major platform unlock for personalization and collaboration.
-
-### Big Dependencies
-
-| Dependency | Why it matters | Unlocks |
-|---|---|---|
-| Need-profile engine (task requirements + matching explanations) | Converts "will this cable work for what I do all the time?" into a repeatable check | Use-case fit advisor before buying/using a cable; saved recurring checks |
-| Auth + workspace model (user/team identity and ownership) | Lets data belong to a person or team instead of one global state | Custom color systems, personal inventory, shared wall management, collaboration |
-| Physical inventory model (cable instances separate from catalog variants) | Required to track duplicates and real-world state of each cable | Virtual wall, in-use vs on-wall status, low-stock and "print more" alerts |
-
-### Sequenced Backlog (Value vs Complexity)
-
-| Order | Candidate | Pain solved | Depends on | Value | Complexity | Tracking |
-|---|---|---|---|---|---|---|
-| 1 | Use-case fit advisor (check a cable against repeated workflows) | Reduces uncertainty like "will this reliably handle my laptop + display workflow?" | Need-profile engine + existing capability profile | High | Medium | Idea (no issue yet) |
-| 2 | Hybrid catalog search + price ingest | Faster catalog lookup with natural phrasing and budget awareness | Ingest/schema updates + ranking pipeline | High | Medium-High | https://github.com/shpitdev/cable-intel/issues/2 |
-| 3 | Auth + multi-user workspaces | Enables persistent per-user/team state and collaboration | Identity/session + data ownership model | Very High | High | Idea (no issue yet) |
-| 4 | Custom color systems by user/workspace (strap + holder profiles) | Supports personalized labeling systems and real material choices | Auth/workspaces | Medium-High | Medium | Idea (no issue yet) |
-| 5 | Virtual wall + cable inventory tracking | Replaces spreadsheets for duplicates, location, and usage state | Auth/workspaces + physical inventory model | Very High | High | Idea (no issue yet) |
-| 6 | "Print more" planner and stock alerts | Reduces holder/label stock surprises and planning overhead | Inventory tracking + holder/label metadata | Medium-High | Medium | Idea (no issue yet) |
-
-## Repository Layout
-
-- `apps/web`: SvelteKit frontend workspace
-- `apps/tui`: terminal ingest manager
-- `packages/backend`: Convex schema/functions and ingest workflow
-- `packages/env`: shared environment validation
-- `packages/shopify-cable-source`: Shopify template/source extraction
+- `apps/web`: SvelteKit workspace UI (catalog + manual flows).
+- `packages/backend`: Convex schema/actions/queries and ingest pipeline.
+- `packages/shopify-cable-source`: Shopify source discovery/extraction.
+- `apps/tui`: terminal ingest manager.
+- Preview deployments run `preview-validation` (seed + runtime QA + browser smoke with artifacts/replay links).
 
 ## Quick Start
 
@@ -79,57 +35,43 @@ bun run dev
 
 Web app: `http://localhost:5173`
 
-## Useful Commands
-
-- `bun run dev`: run backend + web dev servers
-- `bun run build`: run workspace build tasks
-- `bun run check-types`: run type checks
-- `bun run check`: run Ultracite checks
-- `bun run fix`: apply Ultracite fixes
-- `bun run seed:realistic -- --deployment-name <name>`: discover and seed a multi-brand realistic dataset for local search QA
-- `bun run seed:vercel-deployment -- --vercel-url <deployment-url>`: map Vercel URL to Convex deployment, run seed ingest, print quality summary
-- `bun run --cwd apps/tui start`: interactive ingest manager
-- `bun run --cwd apps/tui build:bin`: build standalone TUI binary at `apps/tui/dist/cable-intel-tui`
-
 ## Testing And CI
 
 | Layer | Present | Tooling | Runs in CI |
 |---|---|---|---|
-| unit | yes | `bun test` (example: `apps/web/src/lib/*.test.ts`, `packages/backend/convex/*.test.ts`) | no |
-| integration | yes | `bun test` integration suites | yes |
+| unit | yes | `bun test` (core suites) | yes |
+| integration | yes | `bun test` integration suites | no |
 | e2e api | yes | `bun test packages/backend/convex/ingest.e2e.test.ts` | no |
-| e2e web | no | none | no |
+| e2e web | yes | `agent-browser` smoke scripts | yes |
 
-CI (`.github/workflows/ci.yml`) currently runs:
-- `ultracite check`
-- deterministic manual inference + mapping tests
-- workspace build
-- TUI compile smoke test
+Primary CI workflows:
+- `.github/workflows/ci.yml` (quality + build)
+- `.github/workflows/preview-seed.yml` (preview seed + browser QA)
+- `.github/workflows/org-required-checks.yml` (required merge gate)
 
 ## Deployment And External Services
 
-- Deployment target: Vercel (`vercel.json`)
-- Backend/data: Convex
-- Fallback ingest providers: Firecrawl + AI Gateway/OpenAI-compatible model via `ai` SDK
+- Deploy target: Vercel (`vercel.json`)
+- Data/backend: Convex
+- LLM path: AI Gateway/OpenAI-compatible via `ai` SDK
+- Optional analytics: `PUBLIC_VERCEL_ANALYTICS_DSN` (already wired in `apps/web/src/routes/+layout.ts`)
 
-Environment notes:
-- `PUBLIC_CONVEX_URL` is required by the web app.
-- `AI_GATEWAY_API_KEY` and `FIRECRAWL_API_KEY` are required only for fallback ingest mode.
-- Shopify-only extraction path works without those fallback provider keys.
-- Optional web analytics: `PUBLIC_VERCEL_ANALYTICS_DSN`.
-- Preview runtime validation exists in `.github/workflows/preview-seed.yml` (`preview-validation`):
-  - triggered by Vercel `deployment_status` events
-  - resolves the preview deployment URL automatically
-  - seeds Convex preview catalog
-  - runs manual inference runtime validation and Browserbase QA on deployed preview
+Preview automation secrets:
+- `CONVEX_DEPLOY_KEY_PREVIEW`
+- `BROWSERBASE_API_KEY`
+- `BROWSERBASE_PROJECT_ID`
+- `VERCEL_AUTOMATION_BYPASS_SECRET`
 
-## Release Automation
+## API Surface
 
-- Pushes to `main` create a version bump PR (`chore: bump version to x.y.z`).
-- Auto-merge is enabled on that PR after review.
-- When merged, GitHub Release `vX.Y.Z` is created.
-- Tag pushes trigger TUI binary bundles via `.github/workflows/tui-release.yml`.
+There is no public REST API in this repo. App/backend integration is via Convex actions and queries.
+
+## Active Backlog
+
+- Search quality phase 2: semantic rerank + measured eval ([#92](https://github.com/shpitdev/cable-intel/issues/92))
 
 ## License
 
-No repository-level license file is currently committed.
+MIT License. See [LICENSE](./LICENSE).
+
+Copyright 2026 SHPIT LLC.

@@ -10,6 +10,7 @@ interface CliOptions {
   discoverMax: number;
   seedMax: number;
   templateId: string;
+  vercelBypassSecret: string | null;
   vercelUrl: string | null;
 }
 
@@ -61,8 +62,9 @@ const printUsage = (): void => {
       "  --deployment-name <name>  Convex deployment name (skip URL discovery)",
       "  --template-id <id>        Shopify template id (default: anker-us)",
       "  --discover-max <n>        Max URLs to discover (default: 30)",
-      "  --seed-max <n>            Max URLs to seed (default: 20)",
+      "  --seed-max <n>            Max URLs to seed (default: 8)",
       "  --allowed-domain <host>   Allowed ingest domain (default: anker.com)",
+      "  --vercel-bypass-secret    Vercel automation bypass secret",
       "  --backend-dir <path>      Backend package dir (default: packages/backend)",
       "  --help                    Show this message",
     ].join("\n")
@@ -93,6 +95,7 @@ const parseArgs = (argv: string[]): CliOptions => {
     vercelUrl: process.env.VERCEL_URL
       ? normalizeVercelUrl(process.env.VERCEL_URL)
       : null,
+    vercelBypassSecret: process.env.VERCEL_AUTOMATION_BYPASS_SECRET ?? null,
     deploymentName: null,
     templateId: DEFAULT_TEMPLATE_ID,
     discoverMax: DEFAULT_DISCOVER_MAX,
@@ -120,6 +123,10 @@ const parseArgs = (argv: string[]): CliOptions => {
     "--allowed-domain": (value) => {
       const trimmed = value.trim();
       options.allowedDomain = trimmed || null;
+    },
+    "--vercel-bypass-secret": (value) => {
+      const trimmed = value.trim();
+      options.vercelBypassSecret = trimmed || null;
     },
     "--backend-dir": (value) => {
       options.backendDir = value.trim();
@@ -160,10 +167,33 @@ const parseArgs = (argv: string[]): CliOptions => {
   return options;
 };
 
-const fetchText = async (url: string): Promise<string> => {
-  const response = await fetch(url, {
+const buildBypassedVercelUrl = (
+  rawUrl: string,
+  bypassSecret: string | null
+): string => {
+  if (!bypassSecret) {
+    return rawUrl;
+  }
+  const url = new URL(rawUrl);
+  url.searchParams.set("x-vercel-protection-bypass", bypassSecret);
+  url.searchParams.set("x-vercel-set-bypass-cookie", "true");
+  return url.toString();
+};
+
+const fetchText = async (
+  url: string,
+  bypassSecret: string | null
+): Promise<string> => {
+  const targetUrl = buildBypassedVercelUrl(url, bypassSecret);
+  const response = await fetch(targetUrl, {
     headers: {
       "user-agent": "cable-intel-seed-script/1.0",
+      ...(bypassSecret
+        ? {
+            "x-vercel-protection-bypass": bypassSecret,
+            "x-vercel-set-bypass-cookie": "true",
+          }
+        : {}),
     },
   });
   if (!response.ok) {
@@ -198,13 +228,20 @@ const extractConvexUrl = (nodeCode: string): string => {
 };
 
 const resolveDeploymentNameFromVercelUrl = async (
-  vercelUrl: string
+  vercelUrl: string,
+  bypassSecret: string | null
 ): Promise<{ convexUrl: string; deploymentName: string }> => {
-  const html = await fetchText(vercelUrl);
+  const html = await fetchText(vercelUrl, bypassSecret);
   const appEntryPath = extractAppEntryPath(html);
-  const appCode = await fetchText(new URL(appEntryPath, vercelUrl).toString());
+  const appCode = await fetchText(
+    new URL(appEntryPath, vercelUrl).toString(),
+    bypassSecret
+  );
   const nodeZeroPath = extractNodeZeroPath(appCode);
-  const nodeCode = await fetchText(new URL(nodeZeroPath, vercelUrl).toString());
+  const nodeCode = await fetchText(
+    new URL(nodeZeroPath, vercelUrl).toString(),
+    bypassSecret
+  );
   const convexUrl = extractConvexUrl(nodeCode);
   const deploymentName = new URL(convexUrl).hostname.split(".")[0];
   if (!deploymentName) {
@@ -496,7 +533,10 @@ const main = async (): Promise<void> => {
     if (!vercelUrl) {
       throw new Error("Missing Vercel URL.");
     }
-    const resolved = await resolveDeploymentNameFromVercelUrl(vercelUrl);
+    const resolved = await resolveDeploymentNameFromVercelUrl(
+      vercelUrl,
+      options.vercelBypassSecret
+    );
     deploymentName = resolved.deploymentName;
     convexUrl = resolved.convexUrl;
     console.log(`Resolved Convex URL: ${convexUrl}`);

@@ -165,6 +165,7 @@ Prioritize those over micro-style debates.
 
 - Use `.memory/` directory to store any temporary artifacts.
 - This directory is gitignored, so it will not be committed to the repository, but it is intentionally configured to be visible to codex.
+- For preview-debug sessions against Vercel deployment protection, load `VERCEL_AUTOMATION_BYPASS_SECRET` from a local gitignored file such as `.memory/vercel-automation.env` (or another local `.env` outside git).
 
 
 ## web browsing and running dev server
