@@ -8,9 +8,14 @@ on:
       - synchronize
       - edited
       - ready_for_review
+  deployment_status:
 
 jobs:
-  Check:
+  verify:
+    name: verify
+    if: |
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'deployment_status' && github.event.deployment_status.state == 'success')
     runs-on: ubuntu-latest
     permissions:
       checks: read
@@ -24,14 +29,36 @@ jobs:
           script: |
             const owner = context.repo.owner;
             const repo = context.repo.repo;
-            const pr = context.payload.pull_request;
-            if (!pr) {
-              core.info("No pull request context. Passing check.");
-              return;
-            }
+            let pr = context.payload.pull_request;
+            let pull_number;
+            let headSha;
 
-            const pull_number = pr.number;
-            const headSha = pr.head.sha;
+            if (pr) {
+              pull_number = pr.number;
+              headSha = pr.head.sha;
+            } else {
+              const deploymentStatus = context.payload.deployment_status;
+              const deploymentSha = deploymentStatus?.deployment?.sha;
+              if (!deploymentSha) {
+                core.info("No pull request or deployment SHA context. Passing check.");
+                return;
+              }
+
+              headSha = deploymentSha;
+              const associatedPrs = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+                owner,
+                repo,
+                commit_sha: headSha,
+              });
+
+              pr =
+                associatedPrs.data.find((candidate) => candidate.state === "open") ?? null;
+              if (!pr) {
+                core.info(`No open pull request associated with SHA ${headSha}. Passing check.`);
+                return;
+              }
+              pull_number = pr.number;
+            }
 
             const files = await github.paginate(github.rest.pulls.listFiles, {
               owner,
@@ -51,13 +78,19 @@ jobs:
               return !ciIgnoredPatterns.some((pattern) => pattern.test(file.filename));
             });
 
+            const isReleaseVersionBumpPr =
+              /^chore\/bump-version-/.test(pr.head.ref) &&
+              (pr.user?.login === "github-actions[bot]" || pr.user?.login === "app/github-actions");
+
             const requiredContexts = ["Vercel"];
-            if (hasCiRelevantChange) {
+            if (hasCiRelevantChange && !isReleaseVersionBumpPr) {
               requiredContexts.push("checks", "Preview validation (seed + runtime QA)");
+            } else if (hasCiRelevantChange) {
+              requiredContexts.push("Preview validation (seed + runtime QA)");
             }
 
             core.info(
-              `Required contexts: ${requiredContexts.join(", ")} (ciRelevant=${hasCiRelevantChange})`,
+              `Required contexts: ${requiredContexts.join(", ")} (ciRelevant=${hasCiRelevantChange}, releaseBump=${isReleaseVersionBumpPr})`,
             );
 
             const deadline = Date.now() + 20 * 60 * 1000;
