@@ -167,31 +167,16 @@ const parseArgs = (argv: string[]): CliOptions => {
   return options;
 };
 
-const buildBypassedVercelUrl = (
-  rawUrl: string,
-  bypassSecret: string | null
-): string => {
-  if (!bypassSecret) {
-    return rawUrl;
-  }
-  const url = new URL(rawUrl);
-  url.searchParams.set("x-vercel-protection-bypass", bypassSecret);
-  url.searchParams.set("x-vercel-set-bypass-cookie", "true");
-  return url.toString();
-};
-
 const fetchText = async (
   url: string,
   bypassSecret: string | null
 ): Promise<string> => {
-  const targetUrl = buildBypassedVercelUrl(url, bypassSecret);
-  const response = await fetch(targetUrl, {
+  const response = await fetch(url, {
     headers: {
       "user-agent": "cable-intel-seed-script/1.0",
       ...(bypassSecret
         ? {
             "x-vercel-protection-bypass": bypassSecret,
-            "x-vercel-set-bypass-cookie": "true",
           }
         : {}),
     },
