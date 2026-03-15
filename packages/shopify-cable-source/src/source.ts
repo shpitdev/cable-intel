@@ -1,3 +1,7 @@
+import {
+  collectNormalizedConnectors,
+  extractConnectorPairFromText,
+} from "./connector-text";
 import { cleanText, normalizeWhitespace } from "./text";
 import type {
   ShopifyCableSourceTemplate,
@@ -156,10 +160,6 @@ class HttpError extends Error {
 
 const NEXT_DATA_SCRIPT_REGEX =
   /<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/;
-const CONNECTOR_TOKEN_REGEX =
-  /(Thunderbolt\s*\d*|USB[-\s]?C|USB[-\s]?A|USB\s*3\.0|Lightning|Micro[-\s]?USB)/i;
-const CONNECTOR_PAIR_REGEX =
-  /(Thunderbolt\s*\d*|USB[-\s]?C|USB[-\s]?A|USB\s*3\.0|Lightning|Micro[-\s]?USB)\s*to\s*(Thunderbolt\s*\d*|USB[-\s]?C|USB[-\s]?A|USB\s*3\.0|Lightning|Micro[-\s]?USB)/i;
 const THUNDERBOLT_WORD_REGEX = /thunderbolt/i;
 const CABLE_WORD_REGEX = /cable/i;
 const POWER_REGEX = /(\d{1,3}(?:\.\d+)?)\s*W\b/gi;
@@ -213,10 +213,30 @@ const combineUniqueText = (...segments: Array<string | undefined>): string => {
 };
 
 const slugify = (value: string): string => {
-  return value
-    .toLowerCase()
-    .replaceAll(/[^a-z0-9]+/g, "-")
-    .replaceAll(/^-+|-+$/g, "");
+  let output = "";
+  let previousWasSeparator = false;
+
+  for (const character of value.toLowerCase()) {
+    const isDigit = character >= "0" && character <= "9";
+    const isLowercaseLetter = character >= "a" && character <= "z";
+
+    if (isDigit || isLowercaseLetter) {
+      output += character;
+      previousWasSeparator = false;
+      continue;
+    }
+
+    if (!previousWasSeparator && output.length > 0) {
+      output += "-";
+      previousWasSeparator = true;
+    }
+  }
+
+  if (output.endsWith("-")) {
+    return output.slice(0, -1);
+  }
+
+  return output;
 };
 
 const normalizeBrand = (vendor: string, fallbackBrand: string): string => {
@@ -499,63 +519,6 @@ const mapProductJsonToShopifyProduct = (
     variants: mappedVariants,
     vendor: cleanText(product.vendor),
   };
-};
-
-const normalizeConnectorToken = (token: string): string | null => {
-  const normalized = token.toLowerCase().replace(/\s+/g, "");
-  if (normalized.includes("thunderbolt")) {
-    return "USB-C";
-  }
-  if (normalized.includes("lightning")) {
-    return "Lightning";
-  }
-  if (normalized.includes("micro")) {
-    return "Micro-USB";
-  }
-  if (normalized.includes("usb3.0") || normalized.includes("usb-a")) {
-    return "USB-A";
-  }
-  if (normalized.includes("usb-c") || normalized.includes("usbc")) {
-    return "USB-C";
-  }
-  return null;
-};
-
-const extractConnectorPairFromText = (
-  text: string
-): { from: string; matchedText: string; to: string } | null => {
-  const pairMatch = text.match(CONNECTOR_PAIR_REGEX);
-  if (!(pairMatch?.[1] && pairMatch[2])) {
-    return null;
-  }
-
-  const from = normalizeConnectorToken(pairMatch[1]);
-  const to = normalizeConnectorToken(pairMatch[2]);
-  if (!(from && to)) {
-    return null;
-  }
-
-  return {
-    from,
-    to,
-    matchedText: pairMatch[0],
-  };
-};
-
-const collectNormalizedConnectors = (text: string): string[] => {
-  const connectorMatcher = new RegExp(CONNECTOR_TOKEN_REGEX.source, "gi");
-  const connectors = new Set<string>();
-  let connectorMatch = connectorMatcher.exec(text);
-  while (connectorMatch) {
-    const normalized = normalizeConnectorToken(
-      connectorMatch[1] ?? connectorMatch[0]
-    );
-    if (normalized) {
-      connectors.add(normalized);
-    }
-    connectorMatch = connectorMatcher.exec(text);
-  }
-  return [...connectors];
 };
 
 const parseConnectorPair = (
