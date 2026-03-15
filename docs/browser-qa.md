@@ -36,9 +36,9 @@ The replay URL is captured in `results.json` as `browserbaseReplayUrl`.
 `ci.yml` now runs as one staged pipeline:
 
 1. `Stage 1 - Quality`
-2. `Stage 2 - Browser QA`
-3. `Stage 3 - Integration + Build`
+2. `Stage 2 - Browser QA` using the local `agent-browser` smoke flow
+3. `Stage 3 - Build`
 
-Stage 2 uploads screenshots as artifacts and posts replay/artifact links on PRs.
+`preview-validation` runs the same smoke path against the public preview deployment with `USE_BROWSERBASE=1`, uploads screenshots as artifacts, and posts replay/artifact links on PRs.
 
 `tui-release.yml` also runs browser QA, uploads screenshots to release artifacts, and appends the Browserbase replay URL to release notes.

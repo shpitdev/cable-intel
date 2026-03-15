@@ -25,7 +25,7 @@ concurrency:
 jobs:
   stage-1-quality:
     name: Stage 1 - Quality
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     env:
       PUBLIC_CONVEX_URL: "https://example.convex.cloud"
     steps:
@@ -68,9 +68,71 @@ jobs:
           echo "- ultracite check" >> "$GITHUB_STEP_SUMMARY"
           echo "- deterministic manual inference + mapping tests" >> "$GITHUB_STEP_SUMMARY"
 
+  stage-2-browser-qa:
+    name: Stage 2 - Browser QA
+    needs: stage-1-quality
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    env:
+      PUBLIC_CONVEX_URL: "https://example.convex.cloud"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.8
+
+      - name: Cache Bun + Turbo
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.bun/install/cache
+            .turbo
+          key: ${{ runner.os }}-bun-turbo-${{ hashFiles('**/bun.lock', '**/bun.lockb', 'package.json', 'apps/**/package.json', 'packages/**/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-turbo-
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('**/bun.lock', '**/bun.lockb', 'package.json', 'apps/**/package.json', 'packages/**/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Install agent-browser CLI
+        run: npm install -g agent-browser@latest
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run local browser QA smoke
+        run: bun run qa:browser
+
+      - name: Upload browser QA artifacts
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: browser-qa-local-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/browser-qa/**
+          if-no-files-found: error
+
+      - name: Publish summary
+        if: always()
+        run: |
+          echo "## Stage 2 - Browser QA" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- local agent-browser smoke flow" >> "$GITHUB_STEP_SUMMARY"
+          echo "- screenshots uploaded as workflow artifact" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Browserbase replay runs on the preview-validation workflow" >> "$GITHUB_STEP_SUMMARY"
+
   stage-3-build:
     name: Stage 3 - Build
-    needs: stage-1-quality
+    needs: stage-2-browser-qa
     runs-on: blacksmith-4vcpu-ubuntu-2404
     env:
       PUBLIC_CONVEX_URL: "https://example.convex.cloud"
@@ -118,13 +180,18 @@ jobs:
     if: always()
     needs:
       - stage-1-quality
+      - stage-2-browser-qa
       - stage-3-build
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     steps:
       - name: Finalize staged CI result
         run: |
           if [ "${{ needs.stage-1-quality.result }}" != "success" ]; then
             echo "Stage 1 failed."
+            exit 1
+          fi
+          if [ "${{ needs.stage-2-browser-qa.result }}" != "success" ]; then
+            echo "Stage 2 failed."
             exit 1
           fi
           if [ "${{ needs.stage-3-build.result }}" != "success" ]; then
