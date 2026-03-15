@@ -45,7 +45,7 @@ Web app: `http://localhost:5173`
 | e2e web | yes | `agent-browser` smoke scripts | yes |
 
 Primary CI workflows:
-- `.github/workflows/ci.yml` (quality + build)
+- `.github/workflows/ci.yml` (quality + local browser smoke + build)
 - `.github/workflows/preview-seed.yml` (preview seed + browser QA)
 - `.github/workflows/org-required-checks.yml` (required merge gate)
 

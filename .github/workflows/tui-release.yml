@@ -75,7 +75,7 @@ jobs:
           if-no-files-found: error
 
   browser-qa:
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     env:
       PUBLIC_CONVEX_URL: "https://example.convex.cloud"
       BROWSERBASE_API_KEY: ${{ secrets.BROWSERBASE_API_KEY }}
@@ -148,7 +148,7 @@ jobs:
     needs:
       - build-binaries
       - browser-qa
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     steps:
       - name: Download artifacts
         uses: actions/download-artifact@v7
