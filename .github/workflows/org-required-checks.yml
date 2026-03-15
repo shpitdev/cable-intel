@@ -83,7 +83,7 @@ jobs:
               /^chore\/bump-version-/.test(pr.head.ref) &&
               (pr.user?.login === "github-actions[bot]" || pr.user?.login === "app/github-actions");
 
-            const requiredContexts = ["Vercel"];
+            const requiredContexts = ["Analyze (JavaScript/TypeScript)", "Vercel"];
             if (hasCiRelevantChange && !isReleaseVersionBumpPr) {
               requiredContexts.push("checks", "Preview validation (seed + runtime QA)");
             } else if (hasCiRelevantChange) {
