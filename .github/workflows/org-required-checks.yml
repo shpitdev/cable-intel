@@ -86,8 +86,6 @@ jobs:
             const requiredContexts = ["Analyze (JavaScript/TypeScript)", "Vercel"];
             if (hasCiRelevantChange && !isReleaseVersionBumpPr) {
               requiredContexts.push("checks", "Preview validation (seed + runtime QA)");
-            } else if (hasCiRelevantChange) {
-              requiredContexts.push("Preview validation (seed + runtime QA)");
             }
 
             core.info(

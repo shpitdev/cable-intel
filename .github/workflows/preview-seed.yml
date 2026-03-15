@@ -47,6 +47,14 @@ jobs:
 
             const setPrOutputs = (pr, reason) => {
               core.info(`Resolved PR #${pr.number} (${reason}).`);
+              const isReleaseVersionBumpPr =
+                /^chore\/bump-version-/.test(pr.head?.ref ?? "") &&
+                (pr.user?.login === "github-actions[bot]" || pr.user?.login === "app/github-actions");
+              if (isReleaseVersionBumpPr) {
+                core.info(`PR #${pr.number} is an automated release bump; skipping preview seed.`);
+                core.setOutput("skip", "true");
+                return;
+              }
               core.setOutput("skip", "false");
               core.setOutput("number", String(pr.number));
               core.setOutput("title", pr.title ?? "");

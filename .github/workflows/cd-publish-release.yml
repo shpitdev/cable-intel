@@ -1,8 +1,11 @@
 name: cd-publish-release
 
 on:
-  schedule:
-    - cron: "*/5 * * * *"
+  push:
+    branches:
+      - main
+    paths:
+      - "package.json"
   workflow_dispatch:
 
 permissions:
@@ -15,13 +18,15 @@ concurrency:
 
 jobs:
   publish-release:
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      startsWith(github.event.head_commit.message, 'chore: bump version to ')
     runs-on: blacksmith-2vcpu-ubuntu-2404
     steps:
       - name: Checkout
         uses: actions/checkout@v6
         with:
-          ref: main
-          fetch-depth: 0
+          fetch-depth: 1
 
       - name: Read current version
         id: version
