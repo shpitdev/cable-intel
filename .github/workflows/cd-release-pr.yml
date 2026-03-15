@@ -4,6 +4,14 @@ on:
   push:
     branches:
       - main
+    paths-ignore:
+      - "docs/**"
+      - "README.md"
+      - "AGENTS.md"
+      - "SECURITY.md"
+      - ".github/**"
+      - ".codex/**"
+      - ".opencode/**"
 
 permissions:
   contents: write
