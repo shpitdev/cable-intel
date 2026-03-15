@@ -10,6 +10,12 @@ on:
       - ready_for_review
   deployment_status:
 
+permissions:
+  checks: read
+  contents: read
+  pull-requests: read
+  statuses: read
+
 jobs:
   verify:
     name: Check
@@ -17,11 +23,6 @@ jobs:
       github.event_name == 'pull_request' ||
       (github.event_name == 'deployment_status' && github.event.deployment_status.state == 'success')
     runs-on: ubuntu-latest
-    permissions:
-      checks: read
-      contents: read
-      pull-requests: read
-      statuses: read
     steps:
       - name: Wait for merge gates
         uses: actions/github-script@v8

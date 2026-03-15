@@ -1,3 +1,4 @@
+import { cleanText, normalizeWhitespace } from "./text";
 import type {
   ShopifyCableSourceTemplate,
   ShopifyEvidencePointer,
@@ -188,21 +189,6 @@ const UNKNOWN_BRAND_TOKENS = new Set([
   "none",
   "null",
 ]);
-
-const stripTags = (value: string): string => {
-  return value.replace(/<[^>]+>/g, " ");
-};
-
-const normalizeWhitespace = (value: string): string => {
-  return value.replace(/\s+/g, " ").trim();
-};
-
-const cleanText = (value: string | undefined | null): string => {
-  if (typeof value !== "string") {
-    return "";
-  }
-  return normalizeWhitespace(stripTags(value));
-};
 
 const combineUniqueText = (...segments: Array<string | undefined>): string => {
   const seen = new Set<string>();
