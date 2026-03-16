@@ -120,7 +120,7 @@ jobs:
 
       - name: Upload browser QA artifacts
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: browser-qa-local-${{ github.run_id }}-${{ github.run_attempt }}
           path: artifacts/browser-qa/**
