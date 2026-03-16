@@ -103,16 +103,11 @@ jobs:
             --base main \
             --head "${{ steps.bump_branch.outputs.branch }}" \
             --title "chore: bump version to ${{ steps.bump.outputs.new_version }}" \
-            --body "Automated patch version bump for next release.")
+            --body "Automated patch version bump for next release. Merge this PR manually when you are ready to publish.")
           echo "pr_url=$PR_URL" >> "$GITHUB_OUTPUT"
 
-      - name: Enable auto-merge on release PR
+      - name: Publish manual release instructions
         if: steps.existing_bump_pr.outputs.skip != 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh pr merge "${{ steps.bump_pr.outputs.pr_url }}" \
-            --repo "$GITHUB_REPOSITORY" \
-            --squash \
-            --auto \
-            --delete-branch
+          echo "Opened release bump PR: ${{ steps.bump_pr.outputs.pr_url }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Merge that PR manually to cut the next release." >> "$GITHUB_STEP_SUMMARY"
