@@ -13,8 +13,8 @@
     "@babel/preset-typescript": "^7.28.5",
     "@opentui/core": "^0.1.90",
     "@opentui/solid": "^0.1.90",
-    "babel-preset-solid": "1.9.10",
-    "solid-js": "1.9.11"
+    "babel-preset-solid": "1.9.12",
+    "solid-js": "1.9.12"
   },
   "devDependencies": {
     "@types/bun": "latest"

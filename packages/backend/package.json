@@ -18,7 +18,7 @@
   "devDependencies": {
     "@cable-intel/config": "workspace:*",
     "@types/node": "^25.5.0",
-    "convex-test": "^0.0.43",
+    "convex-test": "^0.0.46",
     "typescript": "catalog:"
   }
 }
