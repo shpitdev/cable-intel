@@ -33,7 +33,7 @@ jobs:
     steps:
       - name: Resolve pull request context
         id: pr
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         env:
           DEPLOY_REF: ${{ env.DEPLOYMENT_REF }}
           DEPLOY_SHA: ${{ env.DEPLOYMENT_SHA }}
@@ -237,7 +237,7 @@ jobs:
 
       - name: Comment browser QA links on PR
         if: steps.pr.outputs.skip != 'true'
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         env:
           ARTIFACT_URL: ${{ steps.upload_browser_qa.outputs.artifact-url }}
           REPLAY_URL: ${{ steps.browser_qa_meta.outputs.replay_url }}
