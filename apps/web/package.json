@@ -28,10 +28,10 @@
     "@sveltejs/kit": "2.61.1",
     "@sveltejs/vite-plugin-svelte": "7.1.2",
     "@tailwindcss/vite": "^4.2.2",
-    "svelte": "5.55.10",
-    "svelte-check": "4.4.8",
+    "svelte": "5.56.0",
+    "svelte-check": "4.5.0",
     "tailwindcss": "^4.2.2",
     "typescript": "catalog:",
-    "vite": "8.0.14"
+    "vite": "8.0.16"
   }
 }
