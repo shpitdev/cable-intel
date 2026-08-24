@@ -18,20 +18,20 @@
     "@vercel/analytics": "^2.0.1",
     "@tabler/icons-svelte": "^3.40.0",
     "convex": "catalog:",
-    "convex-svelte": "^0.0.12",
+    "convex-svelte": "^0.14.0",
     "dotenv": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {
     "@cable-intel/config": "workspace:*",
     "@sveltejs/adapter-auto": "^7.0.1",
-    "@sveltejs/kit": "2.61.1",
-    "@sveltejs/vite-plugin-svelte": "7.1.2",
+    "@sveltejs/kit": "2.70.3",
+    "@sveltejs/vite-plugin-svelte": "7.3.0",
     "@tailwindcss/vite": "^4.2.2",
-    "svelte": "5.55.10",
-    "svelte-check": "4.4.8",
+    "svelte": "5.56.10",
+    "svelte-check": "4.7.6",
     "tailwindcss": "^4.2.2",
     "typescript": "catalog:",
-    "vite": "8.0.14"
+    "vite": "8.2.2"
   }
 }
