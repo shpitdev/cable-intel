@@ -6,59 +6,35 @@ import {
   manualInferenceDefaults,
 } from "./config";
 
-const ORIGINAL_AI_GATEWAY_API_KEY = process.env.AI_GATEWAY_API_KEY;
-const ORIGINAL_FIRECRAWL_API_KEY = process.env.FIRECRAWL_API_KEY;
-const ORIGINAL_AI_SDK_TELEMETRY_ENABLED = process.env.AI_SDK_TELEMETRY_ENABLED;
-const ORIGINAL_AI_SDK_TELEMETRY_RECORD_INPUTS =
-  process.env.AI_SDK_TELEMETRY_RECORD_INPUTS;
-const ORIGINAL_AI_SDK_TELEMETRY_RECORD_OUTPUTS =
-  process.env.AI_SDK_TELEMETRY_RECORD_OUTPUTS;
-const ORIGINAL_MANUAL_INFERENCE_MODEL = process.env.MANUAL_INFERENCE_MODEL;
+const ENV_KEYS = [
+  "AI_GATEWAY_API_KEY",
+  "FIRECRAWL_API_KEY",
+  "AI_SDK_TELEMETRY_ENABLED",
+  "AI_SDK_TELEMETRY_RECORD_INPUTS",
+  "AI_SDK_TELEMETRY_RECORD_OUTPUTS",
+  "MANUAL_INFERENCE_MODEL",
+] as const;
+const originalEnv = new Map(ENV_KEYS.map((key) => [key, process.env[key]]));
+
+function unsetEnv(key: (typeof ENV_KEYS)[number]): void {
+  // process.env stringifies undefined; absence requires deletion.
+  delete process.env[key];
+}
 
 afterEach(() => {
-  if (ORIGINAL_AI_GATEWAY_API_KEY === undefined) {
-    process.env.AI_GATEWAY_API_KEY = undefined;
-  } else {
-    process.env.AI_GATEWAY_API_KEY = ORIGINAL_AI_GATEWAY_API_KEY;
-  }
-
-  if (ORIGINAL_FIRECRAWL_API_KEY === undefined) {
-    process.env.FIRECRAWL_API_KEY = undefined;
-  } else {
-    process.env.FIRECRAWL_API_KEY = ORIGINAL_FIRECRAWL_API_KEY;
-  }
-
-  if (ORIGINAL_AI_SDK_TELEMETRY_ENABLED === undefined) {
-    process.env.AI_SDK_TELEMETRY_ENABLED = undefined;
-  } else {
-    process.env.AI_SDK_TELEMETRY_ENABLED = ORIGINAL_AI_SDK_TELEMETRY_ENABLED;
-  }
-
-  if (ORIGINAL_AI_SDK_TELEMETRY_RECORD_INPUTS === undefined) {
-    process.env.AI_SDK_TELEMETRY_RECORD_INPUTS = undefined;
-  } else {
-    process.env.AI_SDK_TELEMETRY_RECORD_INPUTS =
-      ORIGINAL_AI_SDK_TELEMETRY_RECORD_INPUTS;
-  }
-
-  if (ORIGINAL_AI_SDK_TELEMETRY_RECORD_OUTPUTS === undefined) {
-    process.env.AI_SDK_TELEMETRY_RECORD_OUTPUTS = undefined;
-  } else {
-    process.env.AI_SDK_TELEMETRY_RECORD_OUTPUTS =
-      ORIGINAL_AI_SDK_TELEMETRY_RECORD_OUTPUTS;
-  }
-
-  if (ORIGINAL_MANUAL_INFERENCE_MODEL === undefined) {
-    process.env.MANUAL_INFERENCE_MODEL = undefined;
-  } else {
-    process.env.MANUAL_INFERENCE_MODEL = ORIGINAL_MANUAL_INFERENCE_MODEL;
+  for (const [key, value] of originalEnv) {
+    if (value === undefined) {
+      unsetEnv(key);
+    } else {
+      process.env[key] = value;
+    }
   }
 });
 
 describe("getIngestConfig", () => {
   it("throws when required secrets are missing", () => {
-    process.env.AI_GATEWAY_API_KEY = undefined;
-    process.env.FIRECRAWL_API_KEY = undefined;
+    unsetEnv("AI_GATEWAY_API_KEY");
+    unsetEnv("FIRECRAWL_API_KEY");
 
     expect(() => getIngestConfig()).toThrow(
       "Missing required environment variable: AI_GATEWAY_API_KEY"
@@ -68,9 +44,9 @@ describe("getIngestConfig", () => {
   it("returns required secrets with code defaults", () => {
     process.env.AI_GATEWAY_API_KEY = "test-ai-key";
     process.env.FIRECRAWL_API_KEY = "test-firecrawl-key";
-    process.env.AI_SDK_TELEMETRY_ENABLED = undefined;
-    process.env.AI_SDK_TELEMETRY_RECORD_INPUTS = undefined;
-    process.env.AI_SDK_TELEMETRY_RECORD_OUTPUTS = undefined;
+    unsetEnv("AI_SDK_TELEMETRY_ENABLED");
+    unsetEnv("AI_SDK_TELEMETRY_RECORD_INPUTS");
+    unsetEnv("AI_SDK_TELEMETRY_RECORD_OUTPUTS");
 
     expect(getIngestConfig()).toEqual({
       aiTelemetryEnabled: ingestDefaults.aiTelemetryEnabled,
@@ -112,8 +88,8 @@ describe("getIngestConfig", () => {
 
 describe("getManualInferenceConfig", () => {
   it("requires AI gateway key", () => {
-    process.env.AI_GATEWAY_API_KEY = undefined;
-    process.env.MANUAL_INFERENCE_MODEL = undefined;
+    unsetEnv("AI_GATEWAY_API_KEY");
+    unsetEnv("MANUAL_INFERENCE_MODEL");
 
     expect(() => getManualInferenceConfig()).toThrow(
       "Missing required environment variable: AI_GATEWAY_API_KEY"
@@ -122,10 +98,10 @@ describe("getManualInferenceConfig", () => {
 
   it("returns manual defaults when optional values are absent", () => {
     process.env.AI_GATEWAY_API_KEY = "manual-ai-key";
-    process.env.MANUAL_INFERENCE_MODEL = undefined;
-    process.env.AI_SDK_TELEMETRY_ENABLED = undefined;
-    process.env.AI_SDK_TELEMETRY_RECORD_INPUTS = undefined;
-    process.env.AI_SDK_TELEMETRY_RECORD_OUTPUTS = undefined;
+    unsetEnv("MANUAL_INFERENCE_MODEL");
+    unsetEnv("AI_SDK_TELEMETRY_ENABLED");
+    unsetEnv("AI_SDK_TELEMETRY_RECORD_INPUTS");
+    unsetEnv("AI_SDK_TELEMETRY_RECORD_OUTPUTS");
 
     expect(getManualInferenceConfig()).toEqual({
       aiGatewayApiKey: "manual-ai-key",

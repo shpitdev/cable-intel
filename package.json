@@ -2,34 +2,37 @@
   "name": "cable-intel",
   "version": "0.1.28",
   "private": true,
+  "type": "module",
   "workspaces": {
     "packages": [
       "apps/*",
       "packages/*"
     ],
     "catalog": {
-      "dotenv": "^17.3.1",
-      "zod": "^4.3.6",
+      "dotenv": "^17.4.2",
+      "zod": "^4.6.5",
       "typescript": "^5.9.3",
-      "convex": "^1.34.0"
+      "convex": "^1.46.0"
     }
   },
-  "type": "module",
   "scripts": {
-    "dev": "turbo -F web -F @cable-intel/backend dev",
     "build": "turbo build",
     "build:vercel": "bash ./scripts/vercel-build.sh",
-    "seed:vercel-deployment": "bun run scripts/seed-vercel-deployment.ts",
-    "seed:realistic": "bun run scripts/seed-realistic-catalog.ts",
+    "check": "ultracite check",
     "check-types": "turbo check-types",
-    "dev:native": "turbo -F native dev",
-    "dev:web": "turbo -F web dev",
+    "dev": "turbo -F web -F @cable-intel/backend dev",
     "dev:server": "turbo -F @cable-intel/backend dev",
     "dev:setup": "turbo -F @cable-intel/backend dev:setup",
-    "check": "ultracite check",
+    "dev:web": "turbo -F web dev",
     "fix": "ultracite fix",
     "qa:browser": "bash ./scripts/browser/run-local-browser-qa.sh",
-    "qa:browser:smoke": "bash ./scripts/browser/agent-browser-smoke.sh"
+    "qa:browser:smoke": "bash ./scripts/browser/agent-browser-smoke.sh",
+    "seed:realistic": "bun run scripts/seed-realistic-catalog.ts",
+    "seed:vercel-deployment": "bun run scripts/seed-vercel-deployment.ts",
+    "test:unit": "bun test apps/web/src/lib packages/backend/convex/manualInferenceLogic.test.ts packages/backend/convex/catalogQuality.test.ts packages/backend/convex/config.test.ts packages/backend/convex/contracts packages/backend/convex/shopifyJsonEnrichment.test.ts packages/shopify-cable-source/src/text.test.ts packages/shopify-cable-source/src/connector-text.test.ts scripts/ci"
+  },
+  "overrides": {
+    "cookie": "^0.7.2"
   },
   "dependencies": {
     "@cable-intel/env": "workspace:*",
@@ -39,9 +42,13 @@
   "devDependencies": {
     "@biomejs/biome": "2.4.8",
     "@cable-intel/config": "workspace:*",
-    "turbo": "^2.8.20",
+    "agent-browser": "0.38.2",
+    "turbo": "^2.11.7",
     "typescript": "catalog:",
     "ultracite": "7.3.2"
   },
-  "packageManager": "bun@1.3.11"
+  "packageManager": "bun@1.4.2",
+  "engines": {
+    "node": "24.x"
+  }
 }

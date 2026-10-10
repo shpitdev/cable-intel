@@ -2,22 +2,15 @@
   "name": "tui",
   "private": true,
   "type": "module",
-  "module": "src/index.tsx",
+  "module": "src/index.ts",
   "scripts": {
-    "start": "bun src/index.tsx",
-    "dev": "bun --watch src/index.tsx",
-    "build:bin": "bun build src/index.tsx --compile --outfile dist/cable-intel-tui"
-  },
-  "dependencies": {
-    "@babel/core": "^7.29.0",
-    "@babel/preset-typescript": "^7.28.5",
-    "@opentui/core": "^0.3.0",
-    "@opentui/solid": "^0.3.0",
-    "babel-preset-solid": "1.9.12",
-    "solid-js": "1.9.13"
+    "build:bin": "bun build src/index.ts --compile --outfile dist/cable-intel-tui",
+    "check-types": "tsc --noEmit",
+    "dev": "bun --watch src/index.ts",
+    "start": "bun src/index.ts"
   },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "1.4.2"
   },
   "peerDependencies": {
     "typescript": "^5"

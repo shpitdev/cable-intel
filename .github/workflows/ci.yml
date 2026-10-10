@@ -9,8 +9,7 @@ on:
       - ".codex/**"
       - ".opencode/**"
   push:
-    branches:
-      - main
+    branches: [main]
     paths-ignore:
       - "docs/**"
       - "README.md"
@@ -26,187 +25,63 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  stage-1-quality:
-    name: Stage 1 - Quality
-    if: github.event_name != 'pull_request' || !startsWith(github.head_ref, 'chore/bump-version-')
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+  checks:
+    name: checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     env:
-      PUBLIC_CONVEX_URL: "https://example.convex.cloud"
+      PUBLIC_CONVEX_URL: "https://placeholder.convex.cloud"
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.3.11
+      - name: Setup toolchain
+        uses: jdx/mise-action@v5
 
-      - name: Cache Bun + Turbo
-        uses: actions/cache@v5
+      - name: Verify toolchain
+        run: |
+          node --version
+          bun --version
+          test "$(bun --version)" = "$(node -p "require('./package.json').packageManager.split('@')[1]")"
+
+      - name: Cache dependencies and build
+        uses: actions/cache@v6
         with:
           path: |
             ~/.bun/install/cache
             .turbo
-          key: ${{ runner.os }}-bun-turbo-${{ hashFiles('**/bun.lock', '**/bun.lockb', 'package.json', 'apps/**/package.json', 'packages/**/package.json') }}
-          restore-keys: |
-            ${{ runner.os }}-bun-turbo-
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.toml', 'bun.lock') }}
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Ultracite check
+      - name: Lint
         run: bun x ultracite check
 
-      - name: Core manual inference tests
+      - name: Types
+        run: bun run check-types
+
+      - name: Unit tests
+        run: bun run test:unit
+
+      - name: Build
+        run: bun run build
+
+      - name: TUI compile smoke
         run: |
-          bun test \
-            packages/backend/convex/manualInferenceLogic.test.ts \
-            apps/web/src/lib/capability.test.ts \
-            apps/web/src/lib/mappers.test.ts
+          bun run --cwd apps/tui build:bin
+          ./apps/tui/dist/cable-intel-tui --help
 
-      - name: Publish summary
-        if: always()
-        run: |
-          echo "## Stage 1 - Quality" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "- ultracite check" >> "$GITHUB_STEP_SUMMARY"
-          echo "- deterministic manual inference + mapping tests" >> "$GITHUB_STEP_SUMMARY"
+      - name: Install browser
+        run: bunx --no-install agent-browser install --with-deps
 
-  stage-2-browser-qa:
-    name: Stage 2 - Browser QA
-    needs: stage-1-quality
-    if: github.event_name != 'pull_request' || !startsWith(github.head_ref, 'chore/bump-version-')
-    runs-on: blacksmith-2vcpu-ubuntu-2404
-    env:
-      PUBLIC_CONVEX_URL: "https://example.convex.cloud"
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
+      - name: Browser smoke
+        run: bun run qa:browser -- --skip-build
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.3.11
-
-      - name: Cache Bun + Turbo
-        uses: actions/cache@v5
-        with:
-          path: |
-            ~/.bun/install/cache
-            .turbo
-          key: ${{ runner.os }}-bun-turbo-${{ hashFiles('**/bun.lock', '**/bun.lockb', 'package.json', 'apps/**/package.json', 'packages/**/package.json') }}
-          restore-keys: |
-            ${{ runner.os }}-bun-turbo-
-
-      - name: Cache Playwright browsers
-        uses: actions/cache@v5
-        with:
-          path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-${{ hashFiles('**/bun.lock', '**/bun.lockb', 'package.json', 'apps/**/package.json', 'packages/**/package.json') }}
-          restore-keys: |
-            ${{ runner.os }}-playwright-
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Install agent-browser CLI
-        run: npm install -g agent-browser@latest
-
-      - name: Install Playwright Chromium
-        run: npx playwright install --with-deps chromium
-
-      - name: Run local browser QA smoke
-        run: bun run qa:browser
-
-      - name: Upload browser QA artifacts
+      - name: Upload browser evidence
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: browser-qa-local-${{ github.run_id }}-${{ github.run_attempt }}
           path: artifacts/browser-qa/**
-          if-no-files-found: error
-
-      - name: Publish summary
-        if: always()
-        run: |
-          echo "## Stage 2 - Browser QA" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "- local agent-browser smoke flow" >> "$GITHUB_STEP_SUMMARY"
-          echo "- screenshots uploaded as workflow artifact" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Browserbase replay runs on the preview-validation workflow" >> "$GITHUB_STEP_SUMMARY"
-
-  stage-3-build:
-    name: Stage 3 - Build
-    needs: stage-2-browser-qa
-    if: github.event_name != 'pull_request' || !startsWith(github.head_ref, 'chore/bump-version-')
-    runs-on: blacksmith-4vcpu-ubuntu-2404
-    env:
-      PUBLIC_CONVEX_URL: "https://example.convex.cloud"
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.3.11
-
-      - name: Cache Bun + Turbo
-        uses: actions/cache@v5
-        with:
-          path: |
-            ~/.bun/install/cache
-            .turbo
-          key: ${{ runner.os }}-bun-turbo-${{ hashFiles('**/bun.lock', '**/bun.lockb', 'package.json', 'apps/**/package.json', 'packages/**/package.json') }}
-          restore-keys: |
-            ${{ runner.os }}-bun-turbo-
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Build
-        run: bun run build
-
-      - name: TUI compile smoke test
-        run: |
-          mkdir -p apps/tui/dist
-          bun build apps/tui/src/index.tsx --compile --outfile apps/tui/dist/cable-intel-tui
-          ./apps/tui/dist/cable-intel-tui --help
-
-      - name: Publish summary
-        if: always()
-        run: |
-          echo "## Stage 3 - Build" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "- workspace build" >> "$GITHUB_STEP_SUMMARY"
-          echo "- TUI compile smoke test" >> "$GITHUB_STEP_SUMMARY"
-
-  checks:
-    name: checks
-    if: always()
-    needs:
-      - stage-1-quality
-      - stage-2-browser-qa
-      - stage-3-build
-    runs-on: blacksmith-2vcpu-ubuntu-2404
-    steps:
-      - name: Skip staged CI for automated release PRs
-        if: github.event_name == 'pull_request' && startsWith(github.head_ref, 'chore/bump-version-')
-        run: echo "Automated version-bump PR; staged CI is intentionally skipped."
-
-      - name: Finalize staged CI result
-        if: github.event_name != 'pull_request' || !startsWith(github.head_ref, 'chore/bump-version-')
-        run: |
-          if [ "${{ needs.stage-1-quality.result }}" != "success" ]; then
-            echo "Stage 1 failed."
-            exit 1
-          fi
-          if [ "${{ needs.stage-2-browser-qa.result }}" != "success" ]; then
-            echo "Stage 2 failed."
-            exit 1
-          fi
-          if [ "${{ needs.stage-3-build.result }}" != "success" ]; then
-            echo "Stage 3 failed."
-            exit 1
-          fi
-          echo "All CI stages passed."
+          if-no-files-found: warn

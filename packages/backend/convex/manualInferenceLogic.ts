@@ -238,7 +238,8 @@ const GENERATION_HINTS: Array<{
   {
     impliedGbps: "10",
     label: "USB 3.2 Gen 2",
-    regex: /\b(?:usb\s*(?:3\.2\s*gen\s*2|3\.1\s*gen\s*2)|(?:usb\s*)?3\.2)\b/i,
+    regex:
+      /\b(?:usb\s*(?:3\.2\s*gen\s*2|3\.1\s*gen\s*2)|(?:usb\s*)?3\.2(?!\s*gen\b))\b/i,
   },
   {
     impliedGbps: "5",

@@ -29,7 +29,8 @@ const GENERATION_GBPS_HINTS: Array<{ gbps: number; regex: RegExp }> = [
   { gbps: 20, regex: /\b(?:usb\s*)?3\.2\s*gen\s*2x2\b/i },
   {
     gbps: 10,
-    regex: /\b(?:usb\s*(?:3\.2\s*gen\s*2|3\.1\s*gen\s*2)|(?:usb\s*)?3\.2)\b/i,
+    regex:
+      /\b(?:usb\s*(?:3\.2\s*gen\s*2|3\.1\s*gen\s*2)|(?:usb\s*)?3\.2(?!\s*gen\b))\b/i,
   },
   {
     gbps: 5,

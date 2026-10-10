@@ -23,43 +23,25 @@ jobs:
       github.event_name == 'pull_request' ||
       (github.event_name == 'deployment_status' && github.event.deployment_status.state == 'success')
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
       - name: Wait for merge gates
         uses: actions/github-script@v9
         with:
           script: |
             const owner = context.repo.owner;
             const repo = context.repo.repo;
-            let pr = context.payload.pull_request;
-            let pull_number;
-            let headSha;
-
-            if (pr) {
-              pull_number = pr.number;
-              headSha = pr.head.sha;
-            } else {
-              const deploymentStatus = context.payload.deployment_status;
-              const deploymentSha = deploymentStatus?.deployment?.sha;
-              if (!deploymentSha) {
-                core.info("No pull request or deployment SHA context. Passing check.");
-                return;
-              }
-
-              headSha = deploymentSha;
-              const associatedPrs = await github.rest.repos.listPullRequestsAssociatedWithCommit({
-                owner,
-                repo,
-                commit_sha: headSha,
-              });
-
-              pr =
-                associatedPrs.data.find((candidate) => candidate.state === "open") ?? null;
-              if (!pr) {
-                core.info(`No open pull request associated with SHA ${headSha}. Passing check.`);
-                return;
-              }
-              pull_number = pr.number;
+            const { resolveMergeGateContext } = await import(`${process.env.GITHUB_WORKSPACE}/scripts/ci/merge-gate-context.js`);
+            const resolved = await resolveMergeGateContext(context, github);
+            if (!resolved) {
+              core.info("No current open PR head associated with this deployment.");
+              return;
             }
+            const { pullRequest: pr, headSha } = resolved;
+            const pull_number = pr.number;
 
             const files = await github.paginate(github.rest.pulls.listFiles, {
               owner,
@@ -119,14 +101,14 @@ jobs:
             };
 
             while (Date.now() < deadline) {
-              const [checkRunsResp, statusesResp] = await Promise.all([
-                github.rest.checks.listForRef({
+              const [checkRuns, statuses] = await Promise.all([
+                github.paginate(github.rest.checks.listForRef, {
                   owner,
                   repo,
                   ref: headSha,
                   per_page: 100,
                 }),
-                github.rest.repos.listCommitStatusesForRef({
+                github.paginate(github.rest.repos.listCommitStatusesForRef, {
                   owner,
                   repo,
                   ref: headSha,
@@ -135,14 +117,14 @@ jobs:
               ]);
 
               const checkRunsByName = new Map();
-              for (const checkRun of checkRunsResp.data.check_runs) {
+              for (const checkRun of checkRuns) {
                 if (!checkRunsByName.has(checkRun.name)) {
                   checkRunsByName.set(checkRun.name, checkRun);
                 }
               }
 
               const statusesByContext = new Map();
-              for (const status of statusesResp.data) {
+              for (const status of statuses) {
                 if (!statusesByContext.has(status.context)) {
                   statusesByContext.set(status.context, status);
                 }

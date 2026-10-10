@@ -8,6 +8,11 @@ import {
 } from "./manualInferenceLogic";
 
 describe("manualInferenceLogic", () => {
+  it("preserves the USB 3.2 Gen 1 data rate when inferring a cable", () => {
+    const result = inferDeterministic("USB-C to USB-C, USB 3.2 Gen 1");
+    expect(result.patch.gbps).toBe("5");
+  });
+
   it("extracts deterministic cable hints from free text", () => {
     const deterministic = inferDeterministic(
       "USB-C to USB-C braided cable, 240W PD, USB4, 8K 120Hz"
@@ -52,8 +57,8 @@ describe("manualInferenceLogic", () => {
         usbGeneration: "USB4 / Thunderbolt 4",
         watts: "100",
       },
-      uncertainties: ["video"],
       notes: "Likely USB4-class cable but video support unclear.",
+      uncertainties: ["video"],
     });
 
     const merged = mergeInferenceSignals({
@@ -86,14 +91,14 @@ describe("manualInferenceLogic", () => {
 
   it("applies follow-up answer patch to the draft", () => {
     const question = {
-      id: "q-video-1",
-      category: "video" as const,
-      prompt: "Does packaging mention video output?",
-      detail: "",
-      status: "pending" as const,
-      applyIfYes: { videoSupport: "yes" as const },
       applyIfNo: { videoSupport: "no" as const },
       applyIfSkip: {},
+      applyIfYes: { videoSupport: "yes" as const },
+      category: "video" as const,
+      detail: "",
+      id: "q-video-1",
+      prompt: "Does packaging mention video output?",
+      status: "pending" as const,
     };
 
     const answered = applyQuestionAnswerPatch(
@@ -115,9 +120,9 @@ describe("manualInferenceLogic", () => {
           usbGeneration: " usb4 ",
           watts: 240,
         },
+        extra: "ignored",
         notes: 12_345,
         uncertainties: ["Display", "charging"],
-        extra: "ignored",
       });
     }).toThrow();
   });

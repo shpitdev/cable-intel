@@ -4,34 +4,34 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite dev",
     "build": "vite build",
     "build:vercel": "cd ../.. && bun run build:vercel",
-    "preview": "vite preview",
-    "prepare": "svelte-kit sync || echo ''",
-    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
-    "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch"
+    "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
+    "check-types": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+    "dev": "vite dev",
+    "prepare": "svelte-kit sync",
+    "preview": "vite preview"
   },
   "dependencies": {
     "@cable-intel/backend": "workspace:*",
     "@cable-intel/env": "workspace:*",
+    "@tabler/icons-svelte": "^3.49.0",
     "@vercel/analytics": "^2.0.1",
-    "@tabler/icons-svelte": "^3.40.0",
     "convex": "catalog:",
-    "convex-svelte": "^0.0.12",
+    "convex-svelte": "^0.14.0",
     "dotenv": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {
     "@cable-intel/config": "workspace:*",
     "@sveltejs/adapter-auto": "^7.0.1",
-    "@sveltejs/kit": "2.61.1",
-    "@sveltejs/vite-plugin-svelte": "7.1.2",
-    "@tailwindcss/vite": "^4.2.2",
-    "svelte": "5.55.10",
-    "svelte-check": "4.4.8",
-    "tailwindcss": "^4.2.2",
+    "@sveltejs/kit": "2.70.3",
+    "@sveltejs/vite-plugin-svelte": "7.3.1",
+    "@tailwindcss/vite": "^4.3.3",
+    "svelte": "5.57.2",
+    "svelte-check": "4.7.6",
+    "tailwindcss": "^4.3.3",
     "typescript": "catalog:",
-    "vite": "8.0.14"
+    "vite": "8.3.4"
   }
 }
