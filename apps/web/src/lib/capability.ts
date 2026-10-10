@@ -30,12 +30,11 @@ const GENERATION_GBPS_HINTS: Array<{ gbps: number; regex: RegExp }> = [
   {
     gbps: 10,
     regex:
-      /\b(?:usb\s*(?:3\.2\s*gen\s*2|3\.1\s*gen\s*2)|(?:usb\s*)?3\.2(?!\s*gen\b))\b/i,
+      /\b(?:(?:usb\s*)?(?:3\.2\s*gen\s*2|3\.1\s*gen\s*2)|(?:usb\s*)?3\.2(?!\s*gen\b))\b/i,
   },
   {
     gbps: 5,
-    regex:
-      /\b(?:usb\s*(?:3\.2\s*gen\s*1|3\.1\s*gen\s*1|3\.0)|(?:usb\s*)?3\.0)\b/i,
+    regex: /\b(?:usb\s*)?(?:3\.2\s*gen\s*1|3\.1\s*gen\s*1|3\.0)\b/i,
   },
   { gbps: LIGHTNING_MAX_GBPS, regex: /\b(?:usb\s*2(?:\.0)?|480\s*mbps)\b/i },
 ];

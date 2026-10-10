@@ -13,6 +13,16 @@ describe("manualInferenceLogic", () => {
     expect(result.patch.gbps).toBe("5");
   });
 
+  it.each([
+    ["3.2 Gen 1", "5"],
+    ["3.2 Gen 2", "10"],
+    ["3.1 Gen 1", "5"],
+    ["3.1 Gen 2", "10"],
+  ])("infers %s without a USB prefix", (generation, gbps) => {
+    const result = inferDeterministic(`USB-C to USB-C, ${generation}`);
+    expect(result.patch.gbps).toBe(gbps);
+  });
+
   it("extracts deterministic cable hints from free text", () => {
     const deterministic = inferDeterministic(
       "USB-C to USB-C braided cable, 240W PD, USB4, 8K 120Hz"
