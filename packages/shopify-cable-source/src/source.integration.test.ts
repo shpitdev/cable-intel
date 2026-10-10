@@ -83,7 +83,7 @@ describe("shopify cable source integration", () => {
         url.includes("/products/a82e2-240w-usb-c-to-usb-c-cable")
       )
     ).toBe(true);
-    expect(urls.some((url) => url.includes("/products/a80e6"))).toBe(true);
+    expect(urls.some((url) => url.includes("/products/a80e7"))).toBe(true);
     expect(urls.some((url) => url.includes("/products/a8552"))).toBe(true);
   }, 120_000);
 
@@ -101,7 +101,6 @@ describe("shopify cable source integration", () => {
     expect(result.cables.length).toBeGreaterThan(4);
 
     const skus = new Set<string>();
-    let has240w = false;
 
     for (const cable of result.cables) {
       expect(cable.brand.length).toBeGreaterThan(0);
@@ -120,19 +119,17 @@ describe("shopify cable source integration", () => {
         skus.add(cable.sku);
       }
 
-      if (cable.power.maxWatts === 240) {
-        has240w = true;
-      }
+      expect(cable.power.maxWatts).toBe(240);
+      expect(fieldPaths.has("power.maxWatts")).toBe(true);
     }
 
     expect(skus.size).toBeGreaterThan(4);
     expect(skus.has("A82E2011")).toBe(true);
-    expect(has240w).toBe(true);
   }, 120_000);
 
   it("does not classify Lightning cables as Thunderbolt/USB4 class", async () => {
     const result = await extractAnkerProduct(
-      "https://www.anker.com/products/a8633"
+      "https://www.anker.com/products/a8623"
     );
 
     expect(result.cables.length).toBeGreaterThan(0);
@@ -173,12 +170,14 @@ describe("shopify cable source integration", () => {
     }
   }, 120_000);
 
-  it("uses model hints before SKU when a single variant is 'Default Title'", async () => {
+  it("extracts a named single-variant cable with a bundle SKU", async () => {
     const result = await extractAnkerProduct(
-      "https://www.anker.com/products/b81a2"
+      "https://www.anker.com/products/a82g2012-2"
     );
 
-    expect(result.cables.length).toBeGreaterThan(0);
+    expect(result.cables.length).toBe(1);
+    expect(result.cables[0]?.sku).toBe("BUNDLE-A82G2012-2");
+    expect(result.cables[0]?.variant).toBe("Black / 6 ft");
     for (const cable of result.cables) {
       expect(cable.sku?.length ?? 0).toBeGreaterThan(0);
       expect(cable.variant?.length ?? 0).toBeGreaterThan(0);
@@ -210,12 +209,13 @@ describe("shopify cable source integration", () => {
     }
   }, 120_000);
 
-  it("derives 240W power for all Anker A80E6 USB-C variants", async () => {
+  it("derives 240W power from the current Anker A80E7 title", async () => {
     const result = await extractAnkerProduct(
-      "https://www.anker.com/products/a80e6"
+      "https://www.anker.com/products/a80e7"
     );
 
-    expect(result.cables.length).toBe(7);
+    expect(result.cables.length).toBe(1);
+    expect(result.cables[0]?.sku).toBe("A80E7011");
     for (const cable of result.cables) {
       expect(cable.connectorPair.from).toBe("USB-C");
       expect(cable.connectorPair.to).toBe("USB-C");
