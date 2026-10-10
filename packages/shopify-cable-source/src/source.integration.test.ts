@@ -145,6 +145,22 @@ describe("shopify cable source integration", () => {
     }
   }, 120_000);
 
+  it("preserves B8173 PD incompatibility and Mbps transfer speed", async () => {
+    const result = await extractAnkerProduct(
+      "https://www.anker.com/products/b8173"
+    );
+    expect(result.cables.length).toBeGreaterThan(0);
+    for (const cable of result.cables) {
+      expect(cable.power.pdSupported).toBe(false);
+      expect(cable.data.maxGbps).toBe(0.48);
+      expect(cable.evidence).toContainEqual({
+        fieldPath: "power.pdSupported",
+        sourceUrl: result.source.url,
+        snippet: "Not compatible with Power Delivery",
+      });
+    }
+  }, 120_000);
+
   it("normalizes beta-like vendor aliases to the canonical template brand", async () => {
     const result = await extractAnkerProduct(
       "https://www.anker.com/products/a84n1"
