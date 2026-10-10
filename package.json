@@ -29,7 +29,7 @@
     "qa:browser:smoke": "bash ./scripts/browser/agent-browser-smoke.sh",
     "seed:realistic": "bun run scripts/seed-realistic-catalog.ts",
     "seed:vercel-deployment": "bun run scripts/seed-vercel-deployment.ts",
-    "test:unit": "bun test apps/web/src/lib packages/backend/convex/manualInferenceLogic.test.ts packages/backend/convex/catalogQuality.test.ts packages/backend/convex/config.test.ts packages/backend/convex/contracts packages/backend/convex/shopifyJsonEnrichment.test.ts packages/shopify-cable-source/src/text.test.ts packages/shopify-cable-source/src/connector-text.test.ts scripts/ci"
+    "test:unit": "bun test apps/web/src/lib packages/backend/convex/manualInferenceLogic.test.ts packages/backend/convex/catalogQuality.test.ts packages/backend/convex/config.test.ts packages/backend/convex/contracts packages/backend/convex/shopifyJsonEnrichment.test.ts packages/shopify-cable-source/src/text.test.ts packages/shopify-cable-source/src/connector-text.test.ts scripts/ci packages/backend/convex/gatewayModel.test.ts"
   },
   "overrides": {
     "cookie": "^0.7.2"

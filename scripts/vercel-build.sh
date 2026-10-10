@@ -4,6 +4,14 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
+expected_bun="$(node -p "require('${REPO_ROOT}/package.json').packageManager.split('@')[1]")"
+actual_bun="$(bun --version)"
+echo "Build toolchain: Bun ${actual_bun}; Node $(node --version)"
+if [[ "$actual_bun" != "$expected_bun" ]]; then
+  echo "Expected Bun ${expected_bun}, received ${actual_bun}." >&2
+  exit 1
+fi
+
 # Derive a deterministic preview deployment name so we reuse a bounded pool of Convex
 # previews and avoid hitting the 40-deployment quota on busy repos.
 derive_preview_slot_name() {

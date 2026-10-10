@@ -34,7 +34,7 @@ bun run dev:setup
 bun run dev
 ```
 
-Web app: `http://localhost:5173`. `mise.toml` pins Node 24.21.0 and Bun 1.4.2 for local work and CI; Vercel uses the matching Bun `packageManager` pin and Node 24 engine.
+Web app: `http://localhost:5173`. `mise.toml` pins Node 24.21.0 and Bun 1.4.2 for local work and CI; Vercel uses an explicit `bunx bun@1.4.2` install/build command and the Node 24 engine. Its build script verifies the actual Bun version against `packageManager`.
 
 ## Testing And CI
 
