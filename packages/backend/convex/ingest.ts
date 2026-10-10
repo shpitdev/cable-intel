@@ -1,6 +1,4 @@
-import { createGatewayModel } from "./gatewayModel";
-
-("use node");
+"use node";
 
 import { createHash } from "node:crypto";
 import {
@@ -20,6 +18,7 @@ import {
   extractionOutputSchema,
   parseExtractionOutput,
 } from "./contracts/extraction";
+import { createGatewayModel } from "./gatewayModel";
 import {
   applyShopifyJsonLlmEnrichment,
   applyShopifyJsonPowerSignals,
