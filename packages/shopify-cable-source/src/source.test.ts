@@ -158,6 +158,9 @@ describe("B8173 capability extraction", () => {
 
   it.each([
     ["480 Mbps", 0.48],
+    ["480 mbps", 0.48],
+    ["480MBps", undefined],
+    ["5GBps", undefined],
     ["1000Mbps", 1],
     ["480Mbps or 1000Mbps", 1],
     ["480Mbps and 5Gbps", 5],
