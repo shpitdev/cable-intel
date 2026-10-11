@@ -1,8 +1,8 @@
+import { parsePowerDeliverySupport } from "@cable-intel/shopify-cable-source/power-delivery";
 import { z } from "zod";
 import type { ExtractionOutput } from "./contracts/extraction";
 
 const POWER_REGEX = /(\d{1,3}(?:\.\d+)?)\s*W\b/gi;
-const PD_REGEX = /\bPD\b|Power Delivery/i;
 const EPR_REGEX = /\bEPR\b/i;
 const MAX_WATTAGE = 500;
 
@@ -133,6 +133,7 @@ export interface ShopifyJsonEnrichmentInput {
 export interface DeterministicPowerSignals {
   eprSupported?: boolean;
   maxWatts?: number;
+  pdSnippet?: string;
   pdSupported?: boolean;
   snippet?: string;
 }
@@ -333,11 +334,13 @@ export const deriveDeterministicPowerSignals = (
   const segments = collectPowerSignalSegments(input);
   const { maxWatts, snippet } = getMaxWattsFromSegments(segments);
   const combined = segments.join("\n");
+  const pd = parsePowerDeliverySupport(combined);
 
   return {
     eprSupported: EPR_REGEX.test(combined) ? true : undefined,
     maxWatts,
-    pdSupported: PD_REGEX.test(combined) ? true : undefined,
+    pdSupported: pd?.supported,
+    pdSnippet: pd?.snippet,
     snippet,
   };
 };
@@ -399,9 +402,21 @@ export const applyShopifyJsonPowerSignals = (
     );
   }
 
-  if (signals.pdSupported === true && next.power.pdSupported !== true) {
-    next.power.pdSupported = true;
-    addEvidenceIfMissing(next.evidence, "power.pdSupported", sourceUrl, "PD");
+  if (
+    typeof signals.pdSupported === "boolean" &&
+    signals.pdSupported !== next.power.pdSupported &&
+    (signals.pdSupported === false || next.power.pdSupported === undefined)
+  ) {
+    next.power.pdSupported = signals.pdSupported;
+    next.evidence = next.evidence.filter(
+      (item) => item.fieldPath !== "power.pdSupported"
+    );
+    addEvidenceIfMissing(
+      next.evidence,
+      "power.pdSupported",
+      sourceUrl,
+      signals.pdSnippet
+    );
   }
 
   if (signals.eprSupported === true && next.power.eprSupported !== true) {
@@ -491,7 +506,7 @@ const applyLlmPowerSignals = (
 
   if (
     enrichment.power?.pdSupported === true &&
-    target.power.pdSupported !== true
+    target.power.pdSupported === undefined
   ) {
     target.power.pdSupported = true;
     addEvidenceIfMissing(

@@ -28,21 +28,28 @@ Cable Intel helps you identify cables quickly, label them consistently, and avoi
 ## Quick Start
 
 ```bash
-bun install
+mise install
+mise exec -- bun install
 bun run dev:setup
 bun run dev
 ```
 
-Web app: `http://localhost:5173`
+Web app: `http://localhost:5173`. `mise.toml` pins Node 24.21.0 and Bun 1.4.2 for local work and CI; Vercel uses an explicit `bunx bun@1.4.2` install/build command and the Node 24 engine. Its build script verifies the actual Bun version against `packageManager`.
 
 ## Testing And CI
 
 | Layer | Present | Tooling | Runs in CI |
 |---|---|---|---|
-| unit | yes | `bun test` (core suites) | yes |
+| unit | yes | `bun run test:unit` | yes |
 | integration | yes | `bun test` integration suites | no |
 | e2e api | yes | `bun test packages/backend/convex/ingest.e2e.test.ts` | no |
-| e2e web | yes | `agent-browser` smoke scripts | yes |
+| e2e web | yes | pinned `agent-browser` smoke scripts | local fields in CI; inference/reset on preview |
+
+`bun run check-types` checks the web, backend, source package, and TUI. For local
+checks without a backend, set `PUBLIC_CONVEX_URL=https://placeholder.convex.cloud`.
+The local browser check deliberately disables Convex and does not claim inference
+or reset coverage. Live source/provider integration tests remain separate and need
+network access and the documented provider credentials.
 
 Primary CI workflows:
 - `.github/workflows/ci.yml` (quality + local browser smoke + build)

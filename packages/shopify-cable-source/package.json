@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./power-delivery": "./src/power-delivery.ts"
   },
   "scripts": {
     "check-types": "tsc --noEmit -p tsconfig.json",
@@ -12,6 +13,7 @@
   },
   "devDependencies": {
     "@cable-intel/config": "workspace:*",
+    "@types/node": "^24.19.1",
     "typescript": "catalog:"
   }
 }

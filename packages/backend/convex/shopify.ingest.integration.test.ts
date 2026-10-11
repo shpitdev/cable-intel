@@ -15,9 +15,9 @@ const DEDUPE_TEST_TOP_CABLE_LIMIT = 80;
 const TARGET_PRODUCT_SLUG = "a82e2-240w-usb-c-to-usb-c-cable";
 const MIN_ANKER_ROWS = 4;
 const EXPECTED_SKU = "A82E2011";
-const A80E6_PRODUCT_SLUG = "a80e6";
-const MIN_A80E6_ROWS = 6;
-const EXPECTED_A80E6_MAX_WATTS = 240;
+const A80E7_PRODUCT_SLUG = "a80e7";
+const EXPECTED_A80E7_ROWS = 1;
+const EXPECTED_A80E7_MAX_WATTS = 240;
 const OVERLAP_PRODUCT_SLUG_ONE = "a8662";
 const OVERLAP_PRODUCT_SLUG_TWO = "a8663";
 const SATECHI_USB4_PRODUCT_SLUG = "satechi-usb4-c-to-c-cable";
@@ -115,14 +115,14 @@ describe("shopify ingest integration", () => {
   );
 
   it(
-    "keeps Anker A80E6 USB-C rows quality-ready with 240W evidence",
+    "keeps Anker A80E7 USB-C rows quality-ready with 240W evidence",
     async () => {
       requireEnv("AI_GATEWAY_API_KEY");
       requireEnv("FIRECRAWL_API_KEY");
       const t = convexTest(schema, modules);
 
       const ingestResult = await t.action(api.ingest.runSeedIngest, {
-        seedUrls: [`https://www.anker.com/products/${A80E6_PRODUCT_SLUG}`],
+        seedUrls: [`https://www.anker.com/products/${A80E7_PRODUCT_SLUG}`],
       });
 
       expect(ingestResult.totalItems).toBe(EXPECT_TOTAL_ITEMS);
@@ -137,14 +137,14 @@ describe("shopify ingest integration", () => {
         }
       );
       const workflowRows = workflowReport.cables.filter((row) => {
-        return row.productUrl?.includes(A80E6_PRODUCT_SLUG);
+        return row.productUrl?.includes(A80E7_PRODUCT_SLUG);
       });
 
-      expect(workflowRows.length).toBeGreaterThan(MIN_A80E6_ROWS);
+      expect(workflowRows.length).toBe(EXPECTED_A80E7_ROWS);
       for (const row of workflowRows) {
         expect(row.connectorFrom).toBe("USB-C");
         expect(row.connectorTo).toBe("USB-C");
-        expect(row.power.maxWatts).toBe(EXPECTED_A80E6_MAX_WATTS);
+        expect(row.power.maxWatts).toBe(EXPECTED_A80E7_MAX_WATTS);
         expect(row.qualityState).toBe("ready");
         expect(row.qualityIssues).toEqual([]);
         expect(
@@ -158,12 +158,12 @@ describe("shopify ingest integration", () => {
         limit: TOP_CABLE_LIMIT,
       });
       const topCableRows = topCables.filter((row) => {
-        return row.productUrl?.includes(A80E6_PRODUCT_SLUG);
+        return row.productUrl?.includes(A80E7_PRODUCT_SLUG);
       });
 
-      expect(topCableRows.length).toBeGreaterThan(MIN_A80E6_ROWS);
+      expect(topCableRows.length).toBe(EXPECTED_A80E7_ROWS);
       for (const row of topCableRows) {
-        expect(row.power.maxWatts).toBe(EXPECTED_A80E6_MAX_WATTS);
+        expect(row.power.maxWatts).toBe(EXPECTED_A80E7_MAX_WATTS);
         expect(row.qualityState).toBe("ready");
         expect(row.qualityIssues).toEqual([]);
         expect(

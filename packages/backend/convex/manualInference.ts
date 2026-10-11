@@ -1,4 +1,4 @@
-import { gateway, generateObject } from "ai";
+import { generateObject } from "ai";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
@@ -12,6 +12,7 @@ import {
   query,
 } from "./_generated/server";
 import { getManualInferenceConfig, manualInferenceDefaults } from "./config";
+import { createGatewayModel } from "./gatewayModel";
 import {
   applyDraftPatch,
   applyQuestionAnswerPatch,
@@ -483,7 +484,7 @@ const runLlmInference = async (args: {
     const { object } = await generateObject({
       abortSignal: abortController.signal,
       maxRetries: 1,
-      model: gateway(providerConfig.model),
+      model: createGatewayModel(providerConfig),
       schema: manualInferenceLlmOutputSchema,
       system: MANUAL_INFERENCE_SYSTEM_PROMPT,
       prompt: buildManualInferencePrompt(args),

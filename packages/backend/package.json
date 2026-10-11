@@ -5,20 +5,21 @@
   "license": "ISC",
   "author": "",
   "scripts": {
+    "check-types": "tsc --noEmit -p convex/tsconfig.json",
     "dev": "convex dev",
     "dev:setup": "convex dev --configure --until-success"
   },
   "dependencies": {
     "@cable-intel/shopify-cable-source": "workspace:*",
-    "ai": "^6.0.134",
+    "ai": "^6.0.301",
     "convex": "catalog:",
     "dotenv": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {
     "@cable-intel/config": "workspace:*",
-    "@types/node": "^25.5.0",
-    "convex-test": "^0.0.53",
+    "@types/node": "^24.19.1",
+    "convex-test": "^0.0.60",
     "typescript": "catalog:"
   }
 }

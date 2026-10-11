@@ -2,6 +2,7 @@ import {
   collectNormalizedConnectors,
   extractConnectorPairFromText,
 } from "./connector-text";
+import { parsePowerDeliverySupport } from "./power-delivery";
 import { cleanText, normalizeWhitespace } from "./text";
 import type {
   ShopifyCableSourceTemplate,
@@ -135,6 +136,7 @@ interface ProductExtractionContext {
   imageUrls: string[];
   markdown: string;
   model: string;
+  pdSnippet?: string;
   power: {
     eprSupported?: boolean;
     maxWatts?: number;
@@ -164,11 +166,10 @@ const THUNDERBOLT_WORD_REGEX = /thunderbolt/i;
 const CABLE_WORD_REGEX = /cable/i;
 const POWER_REGEX = /(\d{1,3}(?:\.\d+)?)\s*W\b/gi;
 const POWER_HINT_REGEX = /(\d{1,3}(?:\.\d+)?)\s*W\b/i;
-const DATA_RATE_REGEX = /(\d{1,3}(?:\.\d+)?)\s*Gbps\b/gi;
-const DATA_RATE_HINT_REGEX = /(\d{1,3}(?:\.\d+)?)\s*Gbps\b/i;
+const DATA_RATE_REGEX = /\b(\d+(?:\.\d+)?)\s*([GMgm])bps\b/g;
+const DATA_RATE_HINT_REGEX = /\b\d+(?:\.\d+)?\s*[GMgm]bps\b/;
 const THUNDERBOLT_REGEX = /Thunderbolt\s*(\d+)/i;
 const USB_GENERATION_REGEX = /USB\s*(\d(?:\.\d)?)/i;
-const PD_REGEX = /\bPD\b|Power Delivery/i;
 const EPR_REGEX = /\bEPR\b/i;
 const VIDEO_NEGATIVE_REGEX =
   /does\s+not\s+support\s+screen\s+mirroring|not\s+support\s+screen\s+mirroring/i;
@@ -302,7 +303,7 @@ const hasCapabilitySignals = (text: string): boolean => {
   return (
     POWER_HINT_REGEX.test(text) ||
     DATA_RATE_HINT_REGEX.test(text) ||
-    PD_REGEX.test(text) ||
+    parsePowerDeliverySupport(text) !== undefined ||
     VIDEO_POSITIVE_REGEX.test(text) ||
     VIDEO_NEGATIVE_REGEX.test(text)
   );
@@ -584,10 +585,15 @@ const getPowerCapability = (text: string) => {
 
   return {
     maxWatts: watts.length > 0 ? Math.max(...watts) : undefined,
-    pdSupported: PD_REGEX.test(text) ? true : undefined,
+    pdSupported: parsePowerDeliverySupport(text)?.supported,
     eprSupported: EPR_REGEX.test(text) ? true : undefined,
   };
 };
+
+const MEGABITS_PER_GIGABIT = 1000;
+const dataRateGbps = (match: RegExpMatchArray): number =>
+  Number(match[1]) /
+  (match[2]?.toUpperCase() === "M" ? MEGABITS_PER_GIGABIT : 1);
 
 const getDataCapability = (
   text: string,
@@ -596,7 +602,7 @@ const getDataCapability = (
   const isLightningCable =
     connectorPair.from === "Lightning" || connectorPair.to === "Lightning";
   const speeds = [...text.matchAll(DATA_RATE_REGEX)]
-    .map((match) => Number(match[1]))
+    .map(dataRateGbps)
     .filter((value) => Number.isFinite(value) && value > 0);
 
   const thunderbolt = isLightningCable ? null : text.match(THUNDERBOLT_REGEX);
@@ -832,6 +838,7 @@ const buildProductExtractionContext = (
   const connectorPair = parseConnectorPair(model, contextText);
   const data = getDataCapability(contextText, connectorPair);
   const power = getPowerCapability(powerContextText);
+  const pdSnippet = parsePowerDeliverySupport(powerContextText)?.snippet;
   const variants = Array.isArray(product.variants)
     ? product.variants
     : ([{}] as ShopifyVariant[]);
@@ -869,6 +876,7 @@ const buildProductExtractionContext = (
     imageUrls,
     markdown,
     model,
+    pdSnippet,
     power,
     sourceText,
     variants,
@@ -925,10 +933,21 @@ const buildEvidence = (
     }
   }
 
+  if (context.pdSnippet && typeof effectivePower.pdSupported === "boolean") {
+    evidence.push({
+      fieldPath: "power.pdSupported",
+      snippet: context.pdSnippet,
+      sourceUrl: context.canonicalUrl,
+    });
+  }
+
   if (typeof context.data.maxGbps === "number") {
-    const dataSnippet =
-      getSnippet(context.sourceText, `${context.data.maxGbps}Gbps`) ??
-      getSnippet(context.sourceText, DATA_RATE_REGEX);
+    const rateToken = [...context.sourceText.matchAll(DATA_RATE_REGEX)].find(
+      (match) => dataRateGbps(match) === context.data.maxGbps
+    )?.[0];
+    const dataSnippet = rateToken
+      ? getSnippet(context.sourceText, rateToken)
+      : undefined;
     if (dataSnippet) {
       evidence.push({
         fieldPath: "data.maxGbps",

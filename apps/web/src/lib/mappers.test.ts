@@ -1,6 +1,8 @@
 import { describe, expect, it } from "bun:test";
+import { recommendLabels } from "$lib/labeling";
 import { buildProfileFromMarkings, mapCatalogRowToProfile } from "$lib/mappers";
 import type { CatalogCableRow, MarkingsDraft } from "$lib/types";
+import { DEFAULT_MARKINGS_DRAFT } from "$lib/types";
 
 describe("mapCatalogRowToProfile", () => {
   it("maps Convex row shape into a normalized cable profile", () => {
@@ -119,6 +121,20 @@ describe("mapCatalogRowToProfile", () => {
 });
 
 describe("buildProfileFromMarkings", () => {
+  it.each([
+    ["3.2 Gen 1", 5, "Black"],
+    ["3.2 Gen 2", 10, "Blue"],
+    ["USB 3.2 Gen 1", 5, "Black"],
+  ])("derives throughput and label from %s with blank throughput", (generation, gbps, color) => {
+    const profile = buildProfileFromMarkings({
+      ...DEFAULT_MARKINGS_DRAFT,
+      usbGeneration: generation,
+      gbps: "",
+    });
+    expect(profile.data.maxGbps).toBe(gbps);
+    expect(recommendLabels(profile).velcroColor).toBe(color);
+  });
+
   it("builds a markings profile and parses numeric fields", () => {
     const draft: MarkingsDraft = {
       connectorFrom: "USB-C",

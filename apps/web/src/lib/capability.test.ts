@@ -13,6 +13,21 @@ describe("parsePositiveNumber", () => {
 });
 
 describe("inferMaxGbpsFromGeneration", () => {
+  it("does not promote USB 3.2 Gen 1 to the Gen 2 data rate", () => {
+    expect(inferMaxGbpsFromGeneration("USB 3.2 Gen 1")).toBe(5);
+    expect(inferMaxGbpsFromGeneration("USB 3.2 Gen 2")).toBe(10);
+    expect(inferMaxGbpsFromGeneration("USB 3.2 Gen 2x2")).toBe(20);
+  });
+
+  it.each([
+    ["3.2 Gen 1", 5],
+    ["3.2 Gen 2", 10],
+    ["3.1 Gen 1", 5],
+    ["3.1 Gen 2", 10],
+  ])("infers %s without a USB prefix", (generation, gbps) => {
+    expect(inferMaxGbpsFromGeneration(generation)).toBe(gbps);
+  });
+
   it("returns the highest inferred class for combined generation markings", () => {
     expect(inferMaxGbpsFromGeneration("USB 3.2 Gen 2 / USB4 / TB4")).toBe(40);
   });

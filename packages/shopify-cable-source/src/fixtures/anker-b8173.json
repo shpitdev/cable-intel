@@ -1,0 +1,70 @@
+{
+  "sourceUrl": "https://www.anker.com/products/b8173",
+  "fetchedAt": "2026-10-10T05:43:42.327Z",
+  "product": {
+    "name": "Anker Premium Nylon USB-C to USB-A Cable (2-Pack)",
+    "title": "Anker Premium Nylon USB-C to USB-A Cable (2-Pack)",
+    "vendor": "Anker",
+    "handle": "b8173",
+    "description": "The Anker Advantage: Join the 50 million+ powered by our leading technology. Enhanced Durability: Improved construction techniques and materials make a cable that lasts 12\u00d7 longer. Universal Compatibility: Designed to work flawlessly with any device that uses a USB-C port. Fast Sync & Charge: Supports fast charging up to 15W (3A/5V) and data transfer speeds up to 480Mbps. (Not compatible with Power Delivery) What You Get: 2 \u00d7 Premium Nylon-Braided USB-A to USB-C Charger Cable (6ft), welcome guide, a lifetime warranty, and our friendly customer service",
+    "images": [
+      {
+        "url": "https://cdn.shopify.com/s/files/1/0493/9834/9974/files/B8173011_TD01_V1_729d194f-fac9-44e3-8608-4048b9637f2d.png?v=1730775300",
+        "altText": "Anker charging cable with USB-C for durability",
+        "width": 2400,
+        "height": 3000
+      }
+    ],
+    "variants": [
+      {
+        "name": "Black",
+        "sku": "B8173011",
+        "options": [
+          {
+            "__typename": "MultipleChoiceOption",
+            "id": "gid://shopify/ProductVariant/43756200591510",
+            "displayName": "color",
+            "name": "Color",
+            "values": [
+              {
+                "label": "Black",
+                "hexColors": ["#000000"]
+              }
+            ]
+          }
+        ],
+        "image": {
+          "altText": "Anker charging cable with USB-C for durability",
+          "url": "https://cdn.shopify.com/s/files/1/0493/9834/9974/files/B8173011_TD01_V1_729d194f-fac9-44e3-8608-4048b9637f2d.png?v=1730775300",
+          "width": 2400,
+          "height": 3000
+        }
+      },
+      {
+        "name": "Silver",
+        "sku": "B8173041",
+        "options": [
+          {
+            "__typename": "MultipleChoiceOption",
+            "id": "gid://shopify/ProductVariant/37437990142102",
+            "displayName": "color",
+            "name": "Color",
+            "values": [
+              {
+                "label": "Silver",
+                "hexColors": ["#C0C0C0"]
+              }
+            ]
+          }
+        ],
+        "image": {
+          "altText": "Anker charging cable with USB-C for durability",
+          "url": "https://cdn.shopify.com/s/files/1/0493/9834/9974/files/B8173041_TD01_V1_a2065b77-4d16-4398-b625-fb72c76ed6f4.png?v=1761706315",
+          "width": 2400,
+          "height": 3000
+        }
+      }
+    ]
+  },
+  "projection": "Selected props.pageProps.product fields from vendor __NEXT_DATA__; values unchanged. Only first gallery image retained; unrelated price/inventory/metadata omitted."
+}

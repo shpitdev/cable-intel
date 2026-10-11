@@ -50,7 +50,7 @@ const printUsage = (): void => {
   print("Cable Intel ingest TUI");
   print("");
   print("Usage:");
-  print("  bun run src/index.tsx [options]");
+  print("  bun run src/index.ts [options]");
   print("");
   print("Options:");
   print("  --vercel-url <url>        Resolve deployment from Vercel URL");
@@ -310,7 +310,7 @@ function parseTrailingJson<T>(text: string): T | null {
 
   for (let cursor = startIndexes.length - 1; cursor >= 0; cursor -= 1) {
     const start = startIndexes[cursor];
-    if (start < 0) {
+    if (start === undefined || start < 0) {
       continue;
     }
     const candidate = findBalancedJsonSlice(text, start);

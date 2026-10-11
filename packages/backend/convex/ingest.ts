@@ -8,7 +8,7 @@ import {
   matchShopifyTemplateForUrl,
   type ShopifyExtractedCableSpec,
 } from "@cable-intel/shopify-cable-source";
-import { gateway, generateObject } from "ai";
+import { generateObject } from "ai";
 import { v } from "convex/values";
 import { api, internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
@@ -18,6 +18,7 @@ import {
   extractionOutputSchema,
   parseExtractionOutput,
 } from "./contracts/extraction";
+import { createGatewayModel } from "./gatewayModel";
 import {
   applyShopifyJsonLlmEnrichment,
   applyShopifyJsonPowerSignals,
@@ -415,7 +416,7 @@ const enrichShopifyCablesFromProductJson = async (
   if (needsLlm) {
     const providerConfig = getProviderConfig();
     const { object } = await generateObject({
-      model: gateway(providerConfig.model),
+      model: createGatewayModel(providerConfig),
       schema: shopifyJsonLlmEnrichmentSchema,
       system: SHOPIFY_JSON_ENRICHMENT_SYSTEM_PROMPT,
       prompt: buildShopifyJsonEnrichmentPrompt(canonicalUrl, inputForPrompt),
@@ -492,7 +493,7 @@ const extractCablesFromShopifySource = async (
 };
 
 const extractCableFromSnapshot = async (
-  model: string,
+  providerConfig: ReturnType<typeof getIngestConfig>,
   snapshot: ScrapedSnapshot,
   contentHash: string,
   telemetry: {
@@ -504,7 +505,7 @@ const extractCableFromSnapshot = async (
 ) => {
   const prompt = buildExtractionPrompt(snapshot, contentHash);
   const { object } = await generateObject({
-    model: gateway(model),
+    model: createGatewayModel(providerConfig),
     schema: extractionOutputSchema,
     system: EXTRACTION_SYSTEM_PROMPT,
     prompt,
@@ -623,7 +624,7 @@ const processWorkflowItem = async (
           )
           .digest("hex");
         const parsed = await extractCableFromSnapshot(
-          providerConfig.model,
+          providerConfig,
           snapshot,
           contentHash,
           {

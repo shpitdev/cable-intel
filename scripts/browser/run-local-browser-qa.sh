@@ -7,9 +7,17 @@ HOST="127.0.0.1"
 BASE_URL=""
 OUT_DIR="artifacts/browser-qa"
 START_PREVIEW="1"
+SKIP_BUILD="0"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --)
+      shift
+      ;;
+    --skip-build)
+      SKIP_BUILD="1"
+      shift
+      ;;
     --port)
       PORT="$2"
       shift 2
@@ -88,16 +96,16 @@ wait_for_url() {
   done
 }
 
+mkdir -p "$OUT_DIR"
 if [[ "$START_PREVIEW" == "1" ]]; then
-  export PUBLIC_CONVEX_URL="${PUBLIC_CONVEX_URL:-https://example.convex.cloud}"
+  export PUBLIC_CONVEX_URL="${PUBLIC_CONVEX_URL:-https://placeholder.convex.cloud}"
+  if [[ "$SKIP_BUILD" != "1" ]]; then
+    (cd apps/web && bun run build)
+  fi
   (
     cd apps/web
-    bun run build
-  )
-  (
-    cd apps/web
-    bunx vite preview --host "$HOST" --port "$PORT"
-  ) >/tmp/cable-intel-web-preview.log 2>&1 &
+    bunx --no-install vite preview --host "$HOST" --port "$PORT" --strictPort
+  ) >"$OUT_DIR/server.log" 2>&1 &
   PREVIEW_PID="$!"
   wait_for_url "$BASE_URL"
 fi
@@ -110,6 +118,9 @@ SMOKE_ARGS=(
   --base-url "$BASE_URL"
   --out-dir "$OUT_DIR"
 )
+if [[ "$START_PREVIEW" == "1" ]]; then
+  SMOKE_ARGS+=(--local-only)
+fi
 SMOKE_USE_BROWSERBASE="${USE_BROWSERBASE:-0}"
 if [[ "$SMOKE_USE_BROWSERBASE" == "1" ]]; then
   if is_local_base_url "$BASE_URL"; then

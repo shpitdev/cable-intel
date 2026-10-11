@@ -48,6 +48,99 @@ const baseParsedCable = () => {
 };
 
 describe("shopifyJsonEnrichment", () => {
+  it.each([
+    ["Not compatible with Power Delivery. PD cable.", false],
+    ["Supports Power Delivery.", true],
+    ["Durable cable.", undefined],
+  ])("preserves PD polarity from Shopify JSON: %s", (description, expected) => {
+    const input = buildShopifyJsonEnrichmentInput(
+      { title: "USB-C cable", description },
+      {}
+    );
+    expect(input).not.toBeNull();
+    if (!input) {
+      throw new Error("Expected valid Shopify input");
+    }
+    const signals = deriveDeterministicPowerSignals(input);
+    expect(signals.pdSupported).toBe(expected);
+    const result = applyShopifyJsonPowerSignals(
+      baseParsedCable(),
+      SOURCE_URL,
+      signals
+    );
+    expect(result.power.pdSupported).toBe(expected);
+    if (expected === false) {
+      expect(result.evidence).toContainEqual({
+        fieldPath: "power.pdSupported",
+        sourceUrl: SOURCE_URL,
+        snippet: "Not compatible with Power Delivery",
+      });
+    }
+  });
+
+  it("replaces incorrect positive PD evidence with explicit incompatibility", () => {
+    const parsed = baseParsedCable();
+    parsed.power.pdSupported = true;
+    parsed.evidence.push({
+      fieldPath: "power.pdSupported",
+      snippet: "PD",
+      sourceUrl: SOURCE_URL,
+    });
+    const result = applyShopifyJsonPowerSignals(parsed, SOURCE_URL, {
+      pdSupported: false,
+      pdSnippet: "Not compatible with Power Delivery",
+    });
+    expect(result.power.pdSupported).toBe(false);
+    expect(
+      result.evidence.filter((item) => item.fieldPath === "power.pdSupported")
+    ).toEqual([
+      {
+        fieldPath: "power.pdSupported",
+        snippet: "Not compatible with Power Delivery",
+        sourceUrl: SOURCE_URL,
+      },
+    ]);
+    expect(parsed.power.pdSupported).toBe(true);
+  });
+
+  it("does not promote an explicit PD negative during deterministic or LLM enrichment", () => {
+    const parsed = baseParsedCable();
+    parsed.power.pdSupported = false;
+    parsed.evidence.push({
+      fieldPath: "power.pdSupported",
+      snippet: "Not compatible with Power Delivery",
+      sourceUrl: SOURCE_URL,
+    });
+    const deterministic = applyShopifyJsonPowerSignals(parsed, SOURCE_URL, {
+      pdSupported: true,
+      pdSnippet: "PD",
+    });
+    const enriched = applyShopifyJsonLlmEnrichment(
+      deterministic,
+      SOURCE_URL,
+      {
+        power: { pdSupported: true },
+        evidence: [{ fieldPath: "power.pdSupported", snippet: "PD" }],
+      },
+      "PD"
+    );
+    expect(enriched.power.pdSupported).toBe(false);
+    expect(enriched.evidence).toEqual(parsed.evidence);
+  });
+
+  it("still fills unknown PD support from positive LLM enrichment", () => {
+    const enriched = applyShopifyJsonLlmEnrichment(
+      baseParsedCable(),
+      SOURCE_URL,
+      {
+        power: { pdSupported: true },
+        evidence: [{ fieldPath: "power.pdSupported", snippet: "Supports PD" }],
+      },
+      "Supports PD"
+    );
+    expect(enriched.power.pdSupported).toBe(true);
+  });
+
   it("derives deterministic watts from stable Shopify JSON fields", () => {
     const input = buildShopifyJsonEnrichmentInput(
       {
